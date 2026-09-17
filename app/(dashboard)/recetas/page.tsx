@@ -209,7 +209,10 @@ export default function RecetasPage() {
   }
 
   async function toggleActive(recipe: Recipe) {
-    await supabase.from("recipes").update({ active: !recipe.active } as any).eq("id", recipe.id);
+    // "update" necesita un casteo más fuerte que "insert" (mismo motivo de
+    // fondo que otros casteos de la app): acá no alcanza con castear el
+    // objeto, hay que castear toda la consulta.
+    await (supabase.from("recipes") as any).update({ active: !recipe.active }).eq("id", recipe.id);
     loadData();
   }
 
@@ -460,9 +463,11 @@ export default function RecetasPage() {
       recipeName = outputProduct.name;
     }
 
-    const { error: updateError } = await supabase
-      .from("recipes")
-      .update({ name: recipeName, output_product_id: outputProduct.id } as any)
+    // "update" necesita un casteo más fuerte que "insert" (mismo motivo de
+    // fondo que otros casteos de la app): acá no alcanza con castear el
+    // objeto, hay que castear toda la consulta.
+    const { error: updateError } = await (supabase.from("recipes") as any)
+      .update({ name: recipeName, output_product_id: outputProduct.id })
       .eq("id", recipeId);
 
     if (updateError) {

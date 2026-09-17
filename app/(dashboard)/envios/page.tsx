@@ -185,9 +185,11 @@ export default function EnviosPage() {
 
   async function toggleShipmentStatus(shipment: Shipment) {
     const newStatus = shipment.status === "open" ? "closed" : "open";
-    await supabase
-      .from("shipments")
-      .update({ status: newStatus, closed_at: newStatus === "closed" ? new Date().toISOString() : null } as any)
+    // "update" necesita un casteo más fuerte que "insert" (mismo motivo de
+    // fondo que otros casteos de la app): acá no alcanza con castear el
+    // objeto, hay que castear toda la consulta.
+    await (supabase.from("shipments") as any)
+      .update({ status: newStatus, closed_at: newStatus === "closed" ? new Date().toISOString() : null })
       .eq("id", shipment.id);
     loadShipments();
   }

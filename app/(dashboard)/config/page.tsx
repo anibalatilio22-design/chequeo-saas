@@ -109,13 +109,15 @@ export default function ConfigPage() {
 
     setSavingCompany(true);
 
-    const { error } = await supabase
-      .from("companies")
+    // "update" necesita un casteo más fuerte que "insert": acá no alcanza
+    // con castear el objeto que mandamos, hay que castear toda la consulta
+    // (mismo motivo de fondo que otros casteos de la app).
+    const { error } = await (supabase.from("companies") as any)
       .update({
         name: companyName.trim(),
         address: companyAddress.trim() || null,
         phone: companyPhone.trim() || null,
-      } as any)
+      })
       .eq("id", companyId);
 
     setSavingCompany(false);
@@ -168,9 +170,11 @@ export default function ConfigPage() {
     const { data: publicUrlData } = supabase.storage.from("company-logos").getPublicUrl(path);
     const logoUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
 
-    const { error: updateError } = await supabase
-      .from("companies")
-      .update({ logo_url: logoUrl } as any)
+    // "update" necesita un casteo más fuerte que "insert" (mismo motivo de
+    // fondo que otros casteos de la app): acá no alcanza con castear el
+    // objeto, hay que castear toda la consulta.
+    const { error: updateError } = await (supabase.from("companies") as any)
+      .update({ logo_url: logoUrl })
       .eq("id", companyId);
 
     setUploadingLogo(false);
@@ -190,7 +194,10 @@ export default function ConfigPage() {
     if (!confirmed) return;
 
     setLogoError(null);
-    const { error } = await supabase.from("companies").update({ logo_url: null } as any).eq("id", companyId);
+    // "update" necesita un casteo más fuerte que "insert" (mismo motivo de
+    // fondo que otros casteos de la app): acá no alcanza con castear el
+    // objeto, hay que castear toda la consulta.
+    const { error } = await (supabase.from("companies") as any).update({ logo_url: null }).eq("id", companyId);
 
     if (error) {
       setLogoError(error.message);
