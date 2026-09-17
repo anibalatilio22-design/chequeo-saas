@@ -65,11 +65,16 @@ export default function ConfigPage() {
     if (!profile) return;
     setCompanyId(profile.company_id);
 
-    const { data: companyData } = await supabase
+    const { data: companyDataRaw } = await supabase
       .from("companies")
       .select("*")
       .eq("id", profile.company_id)
       .single();
+
+    // El cliente tipado no siempre resuelve bien el tipo de este resultado
+    // (mismo motivo de fondo que otros casteos de la app), así que lo
+    // casteamos a mano para poder acceder a sus propiedades sin error.
+    const companyData = companyDataRaw as Company | null;
 
     if (companyData) {
       setCompany(companyData);
