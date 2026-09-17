@@ -158,14 +158,18 @@ export default function ArmadoPage() {
 
     setLoading(true);
 
-    const { data: itemData } = await supabase
+    // El cliente tipado no infiere bien los selects con relaciones
+    // embebidas ("*, recipes(*)"), así que trabajamos con el resultado
+    // como "any" acá adentro.
+    const { data: rawItemData } = await supabase
       .from("shipment_items")
       .select("*, recipes(*)")
       .eq("shipment_id", shipmentId)
       .eq("label_ean", ean)
       .maybeSingle();
 
-    const recipeData = (itemData as any)?.recipes ?? null;
+    const itemData = rawItemData as any;
+    const recipeData = itemData?.recipes ?? null;
 
     if (!itemData || !recipeData || !recipeData.active) {
       setLoading(false);
