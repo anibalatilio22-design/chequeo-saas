@@ -136,22 +136,42 @@ export interface ShipmentProgress {
 
 // Forma mínima que espera @supabase/ssr / supabase-js para tipar el cliente.
 // Se puede ampliar con Row/Insert/Update por tabla cuando se generen los tipos reales.
+//
+// IMPORTANTE: cada tabla/vista necesita la clave "Relationships" (aunque sea
+// vacía) porque los tipos internos de @supabase/postgrest-js la exigen para
+// poder resolver bien el tipo de resultado de selects, inserts y updates. Si
+// falta, TypeScript no avisa acá mismo sino en cualquier lugar del código
+// donde se use esa tabla, con errores confusos tipo "no existe en el tipo
+// 'never'" — que es justo lo que nos pasó al compilar en Vercel.
 export interface Database {
   public: {
     Tables: {
-      companies: { Row: Company; Insert: Partial<Company>; Update: Partial<Company> };
-      users: { Row: AppUser; Insert: Partial<AppUser>; Update: Partial<AppUser> };
-      workstations: { Row: Workstation; Insert: Partial<Workstation>; Update: Partial<Workstation> };
-      operators: { Row: Operator; Insert: Partial<Operator>; Update: Partial<Operator> };
-      products: { Row: Product; Insert: Partial<Product>; Update: Partial<Product> };
-      recipes: { Row: Recipe; Insert: Partial<Recipe>; Update: Partial<Recipe> };
-      recipe_components: { Row: RecipeComponent; Insert: Partial<RecipeComponent>; Update: Partial<RecipeComponent> };
-      shipments: { Row: Shipment; Insert: Partial<Shipment>; Update: Partial<Shipment> };
-      shipment_items: { Row: ShipmentItem; Insert: Partial<ShipmentItem>; Update: Partial<ShipmentItem> };
-      completions: { Row: Completion; Insert: Partial<Completion>; Update: Partial<Completion> };
+      companies: { Row: Company; Insert: Partial<Company>; Update: Partial<Company>; Relationships: [] };
+      users: { Row: AppUser; Insert: Partial<AppUser>; Update: Partial<AppUser>; Relationships: [] };
+      workstations: { Row: Workstation; Insert: Partial<Workstation>; Update: Partial<Workstation>; Relationships: [] };
+      operators: { Row: Operator; Insert: Partial<Operator>; Update: Partial<Operator>; Relationships: [] };
+      products: { Row: Product; Insert: Partial<Product>; Update: Partial<Product>; Relationships: [] };
+      recipes: { Row: Recipe; Insert: Partial<Recipe>; Update: Partial<Recipe>; Relationships: [] };
+      recipe_components: {
+        Row: RecipeComponent;
+        Insert: Partial<RecipeComponent>;
+        Update: Partial<RecipeComponent>;
+        Relationships: [];
+      };
+      shipments: { Row: Shipment; Insert: Partial<Shipment>; Update: Partial<Shipment>; Relationships: [] };
+      shipment_items: {
+        Row: ShipmentItem;
+        Insert: Partial<ShipmentItem>;
+        Update: Partial<ShipmentItem>;
+        Relationships: [];
+      };
+      completions: { Row: Completion; Insert: Partial<Completion>; Update: Partial<Completion>; Relationships: [] };
     };
     Views: {
-      shipment_progress: { Row: ShipmentProgress };
+      shipment_progress: { Row: ShipmentProgress; Relationships: [] };
     };
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }
