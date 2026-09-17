@@ -119,7 +119,7 @@ export default function RecetasPage() {
     const failed: string[] = [];
 
     for (const product of orphanProducts) {
-      const { data: recipeData, error } = await supabase
+      const { data: recipeDataRaw, error } = await supabase
         .from("recipes")
         .insert({
           company_id: companyId,
@@ -129,6 +129,11 @@ export default function RecetasPage() {
         } as any)
         .select()
         .single();
+
+      // El cliente tipado no siempre resuelve bien el tipo de este resultado
+      // (mismo motivo de fondo que otros casteos de la app), así que lo
+      // casteamos a mano para poder acceder a sus propiedades sin error.
+      const recipeData = recipeDataRaw as { id: string } | null;
 
       if (error || !recipeData) {
         failed.push(`${product.name} (${error?.message ?? "error"})`);
@@ -256,11 +261,16 @@ export default function RecetasPage() {
     }
     if (!companyId) return { product: null, error: "No se encontró la empresa" };
 
-    const { data: created, error } = await supabase
+    const { data: createdRaw, error } = await supabase
       .from("products")
       .insert({ company_id: companyId, ean: eanTrim || null, sku: skuTrim || null, name: nameTrim } as any)
       .select()
       .single();
+
+    // El cliente tipado no siempre resuelve bien el tipo de este resultado
+    // (mismo motivo de fondo que otros casteos de la app), así que lo
+    // casteamos a mano para poder acceder a sus propiedades sin error.
+    const created = createdRaw as Product | null;
 
     if (error || !created) {
       return { product: null, error: error?.message ?? "Error al crear el producto" };
@@ -340,11 +350,16 @@ export default function RecetasPage() {
       recipeName = outputProduct.name;
     }
 
-    const { data: recipeData, error: recipeError } = await supabase
+    const { data: recipeDataRaw, error: recipeError } = await supabase
       .from("recipes")
       .insert({ company_id: companyId, output_product_id: outputProduct.id, name: recipeName, label_ean: null } as any)
       .select()
       .single();
+
+    // El cliente tipado no siempre resuelve bien el tipo de este resultado
+    // (mismo motivo de fondo que otros casteos de la app), así que lo
+    // casteamos a mano para poder acceder a sus propiedades sin error.
+    const recipeData = recipeDataRaw as { id: string } | null;
 
     if (recipeError || !recipeData) {
       setSaving(false);
@@ -660,7 +675,7 @@ export default function RecetasPage() {
         (p) => (group.outputSku && p.sku === group.outputSku) || (group.outputEan && p.ean === group.outputEan)
       );
       if (!outputProduct) {
-        const { data: createdProduct, error: createProductError } = await supabase
+        const { data: createdProductRaw, error: createProductError } = await supabase
           .from("products")
           .insert({
             company_id: companyId,
@@ -670,6 +685,10 @@ export default function RecetasPage() {
           } as any)
           .select()
           .single();
+        // El cliente tipado no siempre resuelve bien el tipo de este resultado
+        // (mismo motivo de fondo que otros casteos de la app), así que lo
+        // casteamos a mano para poder acceder a sus propiedades sin error.
+        const createdProduct = createdProductRaw as Product | null;
         if (createProductError || !createdProduct) {
           errors.push(`${label}: no se pudo crear el producto final (${createProductError?.message ?? "error"})`);
           continue;
@@ -683,11 +702,15 @@ export default function RecetasPage() {
       for (const comp of group.components) {
         let compProduct = products.find((p) => (comp.sku && p.sku === comp.sku) || (comp.ean && p.ean === comp.ean));
         if (!compProduct) {
-          const { data: createdComp, error: createCompError } = await supabase
+          const { data: createdCompRaw, error: createCompError } = await supabase
             .from("products")
             .insert({ company_id: companyId, ean: comp.ean || null, sku: comp.sku || null, name: comp.name } as any)
             .select()
             .single();
+          // El cliente tipado no siempre resuelve bien el tipo de este resultado
+          // (mismo motivo de fondo que otros casteos de la app), así que lo
+          // casteamos a mano para poder acceder a sus propiedades sin error.
+          const createdComp = createdCompRaw as Product | null;
           if (createCompError || !createdComp) {
             componentError = `no se pudo crear "${comp.name}" (${createCompError?.message ?? "error"})`;
             break;
@@ -703,7 +726,7 @@ export default function RecetasPage() {
         continue;
       }
 
-      const { data: recipeData, error: recipeError } = await supabase
+      const { data: recipeDataRaw, error: recipeError } = await supabase
         .from("recipes")
         .insert({
           company_id: companyId,
@@ -713,6 +736,11 @@ export default function RecetasPage() {
         } as any)
         .select()
         .single();
+
+      // El cliente tipado no siempre resuelve bien el tipo de este resultado
+      // (mismo motivo de fondo que otros casteos de la app), así que lo
+      // casteamos a mano para poder acceder a sus propiedades sin error.
+      const recipeData = recipeDataRaw as { id: string } | null;
 
       if (recipeError || !recipeData) {
         errors.push(`${label}: no se pudo cargar (${recipeError?.message ?? "error"})`);

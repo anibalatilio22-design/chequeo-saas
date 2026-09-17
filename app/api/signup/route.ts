@@ -46,11 +46,16 @@ export async function POST(req: Request) {
       .replace(/(^-|-$)/g, "") || "empresa";
   const slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
 
-  const { data: company, error: companyError } = await admin
+  const { data: companyRaw, error: companyError } = await admin
     .from("companies")
     .insert({ name: companyName, slug } as any)
     .select()
     .single();
+
+  // El cliente tipado no siempre resuelve bien el tipo de este resultado
+  // (mismo motivo de fondo que otros casteos de la app), así que lo
+  // casteamos a mano para poder acceder a sus propiedades sin error.
+  const company = companyRaw as { id: string } | null;
 
   if (companyError || !company) {
     return NextResponse.json(

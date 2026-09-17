@@ -28,11 +28,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "No autenticado" }, { status: 401 });
   }
 
-  const { data: profile } = await supabase
+  const { data: profileRaw } = await supabase
     .from("users")
     .select("company_id, role")
     .eq("id", user.id)
     .single();
+
+  // El cliente tipado no siempre resuelve bien el tipo de este resultado
+  // (mismo motivo de fondo que otros casteos de la app), así que lo
+  // casteamos a mano para poder acceder a sus propiedades sin error.
+  const profile = profileRaw as { company_id: string; role: string } | null;
 
   if (!profile || profile.role !== "admin") {
     return NextResponse.json({ ok: false, error: "Solo un admin puede crear operarios" }, { status: 403 });

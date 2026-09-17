@@ -274,11 +274,16 @@ export default function EnviosPage() {
     setImporting(true);
     setImportResult(null);
 
-    const { data: shipmentData, error: shipmentError } = await supabase
+    const { data: shipmentDataRaw, error: shipmentError } = await supabase
       .from("shipments")
       .insert({ company_id: companyId, code: shipmentCode.trim(), type: shipmentType, status: "open" } as any)
       .select()
       .single();
+
+    // El cliente tipado no siempre resuelve bien el tipo de este resultado
+    // (mismo motivo de fondo que otros casteos de la app), así que lo
+    // casteamos a mano para poder acceder a sus propiedades sin error.
+    const shipmentData = shipmentDataRaw as { id: string; code: string } | null;
 
     if (shipmentError || !shipmentData) {
       setImporting(false);
