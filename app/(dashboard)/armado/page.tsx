@@ -327,6 +327,9 @@ export default function ArmadoPage() {
       data: { user },
     } = await supabase.auth.getUser();
 
+    // El cliente tipado a veces no logra resolver el tipo de "insert" para
+    // esta tabla (mismo motivo de fondo que los otros casteos de este
+    // archivo), así que forzamos el tipo del objeto a mano acá.
     const { error: insertError } = await supabase.from("completions").insert({
       company_id: recipe!.company_id,
       shipment_item_id: shipmentItemId!,
@@ -335,7 +338,7 @@ export default function ArmadoPage() {
       user_id: user?.id ?? null,
       workstation_id: null, // TODO: configurar puesto de trabajo por PC
       scanned_components: scannedLog,
-    });
+    } as any);
 
     setLoading(false);
 

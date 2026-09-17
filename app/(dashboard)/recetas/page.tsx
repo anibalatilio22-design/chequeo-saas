@@ -126,7 +126,7 @@ export default function RecetasPage() {
           output_product_id: product.id,
           name: product.name,
           label_ean: null,
-        })
+        } as any)
         .select()
         .single();
 
@@ -143,7 +143,7 @@ export default function RecetasPage() {
         product_sku: product.sku,
         product_name: product.name,
         quantity: 1,
-      });
+      } as any);
 
       if (compError) {
         failed.push(`${product.name} (creado, pero sin componente: ${compError.message})`);
@@ -204,7 +204,7 @@ export default function RecetasPage() {
   }
 
   async function toggleActive(recipe: Recipe) {
-    await supabase.from("recipes").update({ active: !recipe.active }).eq("id", recipe.id);
+    await supabase.from("recipes").update({ active: !recipe.active } as any).eq("id", recipe.id);
     loadData();
   }
 
@@ -258,7 +258,7 @@ export default function RecetasPage() {
 
     const { data: created, error } = await supabase
       .from("products")
-      .insert({ company_id: companyId, ean: eanTrim || null, sku: skuTrim || null, name: nameTrim })
+      .insert({ company_id: companyId, ean: eanTrim || null, sku: skuTrim || null, name: nameTrim } as any)
       .select()
       .single();
 
@@ -342,7 +342,7 @@ export default function RecetasPage() {
 
     const { data: recipeData, error: recipeError } = await supabase
       .from("recipes")
-      .insert({ company_id: companyId, output_product_id: outputProduct.id, name: recipeName, label_ean: null })
+      .insert({ company_id: companyId, output_product_id: outputProduct.id, name: recipeName, label_ean: null } as any)
       .select()
       .single();
 
@@ -365,7 +365,7 @@ export default function RecetasPage() {
         product_sku: c.product.sku,
         product_name: c.product.name,
         quantity: c.quantity,
-      }))
+      })) as any
     );
 
     setSaving(false);
@@ -447,7 +447,7 @@ export default function RecetasPage() {
 
     const { error: updateError } = await supabase
       .from("recipes")
-      .update({ name: recipeName, output_product_id: outputProduct.id })
+      .update({ name: recipeName, output_product_id: outputProduct.id } as any)
       .eq("id", recipeId);
 
     if (updateError) {
@@ -469,7 +469,7 @@ export default function RecetasPage() {
         product_sku: c.product.sku,
         product_name: c.product.name,
         quantity: c.quantity,
-      }))
+      })) as any
     );
 
     setSavingEdit(false);
@@ -667,7 +667,7 @@ export default function RecetasPage() {
             ean: group.outputEan || null,
             sku: group.outputSku || null,
             name: group.outputName,
-          })
+          } as any)
           .select()
           .single();
         if (createProductError || !createdProduct) {
@@ -685,7 +685,7 @@ export default function RecetasPage() {
         if (!compProduct) {
           const { data: createdComp, error: createCompError } = await supabase
             .from("products")
-            .insert({ company_id: companyId, ean: comp.ean || null, sku: comp.sku || null, name: comp.name })
+            .insert({ company_id: companyId, ean: comp.ean || null, sku: comp.sku || null, name: comp.name } as any)
             .select()
             .single();
           if (createCompError || !createdComp) {
@@ -710,7 +710,7 @@ export default function RecetasPage() {
           output_product_id: outputProduct.id,
           name: group.outputName || outputProduct.name,
           label_ean: null,
-        })
+        } as any)
         .select()
         .single();
 
@@ -728,7 +728,7 @@ export default function RecetasPage() {
           product_sku: c.product.sku,
           product_name: c.product.name,
           quantity: c.quantity,
-        }))
+        })) as any
       );
 
       if (componentsError) {

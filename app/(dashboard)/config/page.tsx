@@ -105,7 +105,7 @@ export default function ConfigPage() {
         name: companyName.trim(),
         address: companyAddress.trim() || null,
         phone: companyPhone.trim() || null,
-      })
+      } as any)
       .eq("id", companyId);
 
     setSavingCompany(false);
@@ -160,7 +160,7 @@ export default function ConfigPage() {
 
     const { error: updateError } = await supabase
       .from("companies")
-      .update({ logo_url: logoUrl })
+      .update({ logo_url: logoUrl } as any)
       .eq("id", companyId);
 
     setUploadingLogo(false);
@@ -180,7 +180,7 @@ export default function ConfigPage() {
     if (!confirmed) return;
 
     setLogoError(null);
-    const { error } = await supabase.from("companies").update({ logo_url: null }).eq("id", companyId);
+    const { error } = await supabase.from("companies").update({ logo_url: null } as any).eq("id", companyId);
 
     if (error) {
       setLogoError(error.message);

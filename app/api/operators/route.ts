@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     company_id: profile.company_id,
     full_name,
     pin_hash,
-  });
+  } as any);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });

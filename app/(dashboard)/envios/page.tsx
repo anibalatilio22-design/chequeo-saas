@@ -187,7 +187,7 @@ export default function EnviosPage() {
     const newStatus = shipment.status === "open" ? "closed" : "open";
     await supabase
       .from("shipments")
-      .update({ status: newStatus, closed_at: newStatus === "closed" ? new Date().toISOString() : null })
+      .update({ status: newStatus, closed_at: newStatus === "closed" ? new Date().toISOString() : null } as any)
       .eq("id", shipment.id);
     loadShipments();
   }
@@ -276,7 +276,7 @@ export default function EnviosPage() {
 
     const { data: shipmentData, error: shipmentError } = await supabase
       .from("shipments")
-      .insert({ company_id: companyId, code: shipmentCode.trim(), type: shipmentType, status: "open" })
+      .insert({ company_id: companyId, code: shipmentCode.trim(), type: shipmentType, status: "open" } as any)
       .select()
       .single();
 
@@ -318,7 +318,7 @@ export default function EnviosPage() {
         recipe_id: recipeId,
         quantity_required: row.quantity,
         label_ean: row.codigo_ml,
-      });
+      } as any);
 
       if (itemError) {
         errors.push(`${row.codigo_ml}: ${itemError.message}`);

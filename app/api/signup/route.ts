@@ -48,7 +48,7 @@ export async function POST(req: Request) {
 
   const { data: company, error: companyError } = await admin
     .from("companies")
-    .insert({ name: companyName, slug })
+    .insert({ name: companyName, slug } as any)
     .select()
     .single();
 
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     full_name: fullName,
     role: "admin",
     active: true,
-  });
+  } as any);
 
   if (profileError) {
     // Rollback best-effort de lo que ya se creó.
