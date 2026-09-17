@@ -183,9 +183,14 @@ export default function ArmadoPage() {
       .select("*")
       .eq("recipe_id", recipeData.id);
 
+    // Mismo motivo que arriba: como "recipeData.id" viene de un resultado
+    // "any", TypeScript deja de poder inferir el tipo de esta consulta
+    // también, así que lo casteamos a mano.
+    const components = (componentsData ?? []) as RecipeComponent[];
+
     setRecipe(recipeData);
     setShipmentItemId(itemData.id);
-    setComponents((componentsData ?? []).map((c) => ({ ...c, scannedCount: 0 })));
+    setComponents(components.map((c) => ({ ...c, scannedCount: 0 })));
     setScannedLog([]);
     await loadProgress(itemData.id);
 
