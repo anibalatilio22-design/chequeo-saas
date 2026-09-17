@@ -59,7 +59,10 @@ export default function EnviosPage() {
     // una tabla), así que acá casteamos a mano contra el tipo que ya
     // tenemos escrito para esta vista.
     const progressRows = (progressData ?? []) as ShipmentProgress[];
-    const realLabelByItemId = new Map((itemsData ?? []).map((it) => [it.id, it.label_ean]));
+    // Mismo motivo de fondo que otros casteos de la app: sin este casteo,
+    // TypeScript no puede inferir bien las propiedades de cada fila acá.
+    const itemsRows = (itemsData ?? []) as { id: string; label_ean: string | null }[];
+    const realLabelByItemId = new Map(itemsRows.map((it) => [it.id, it.label_ean]));
     const merged = progressRows.map((p) => ({
       ...p,
       label_ean: realLabelByItemId.get(p.shipment_item_id) ?? p.label_ean,
@@ -77,7 +80,9 @@ export default function EnviosPage() {
     setShipments(data ?? []);
     // Los items de cada envío se muestran siempre (no hay que tocar nada
     // para verlos), así que los traemos de una vez para todos los envíos.
-    (data ?? []).forEach((s) => loadShipmentItems(s.id));
+    // Casteamos el resultado a mano (mismo motivo de fondo que otros
+    // casteos de la app) para poder leer "id" de cada fila sin error.
+    ((data ?? []) as { id: string }[]).forEach((s) => loadShipmentItems(s.id));
   }
 
   async function loadCatalog(): Promise<{ products: Product[]; recipes: Recipe[]; allRecipes: Recipe[] }> {
@@ -85,7 +90,7 @@ export default function EnviosPage() {
     setProducts(productsData ?? []);
     const { data: allRecipesData } = await supabase.from("recipes").select("*");
     setAllRecipes(allRecipesData ?? []);
-    const activeRecipes = (allRecipesData ?? []).filter((r) => r.active);
+    const activeRecipes = ((allRecipesData ?? []) as Recipe[]).filter((r) => r.active);
     setRecipes(activeRecipes);
     // Devolvemos los datos recién traídos (no solo los guardamos en el estado)
     // porque el estado de React no se actualiza al instante: si justo después

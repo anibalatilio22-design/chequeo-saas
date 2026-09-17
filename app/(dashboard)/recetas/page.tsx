@@ -64,7 +64,9 @@ export default function RecetasPage() {
 
     const { data: componentsData } = await supabase.from("recipe_components").select("*");
     const grouped: Record<string, RecipeComponent[]> = {};
-    (componentsData ?? []).forEach((c) => {
+    // Casteamos el resultado a mano (mismo motivo de fondo que otros
+    // casteos de la app) para poder leer sus propiedades sin error.
+    ((componentsData ?? []) as RecipeComponent[]).forEach((c) => {
       if (!grouped[c.recipe_id]) grouped[c.recipe_id] = [];
       grouped[c.recipe_id].push(c);
     });
