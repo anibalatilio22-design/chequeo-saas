@@ -55,8 +55,12 @@ export default function EnviosPage() {
       supabase.from("shipment_items").select("id, label_ean").eq("shipment_id", shipmentId),
     ]);
 
+    // El cliente tipado no infiere bien las vistas (shipment_progress no es
+    // una tabla), así que acá casteamos a mano contra el tipo que ya
+    // tenemos escrito para esta vista.
+    const progressRows = (progressData ?? []) as ShipmentProgress[];
     const realLabelByItemId = new Map((itemsData ?? []).map((it) => [it.id, it.label_ean]));
-    const merged = (progressData ?? []).map((p) => ({
+    const merged = progressRows.map((p) => ({
       ...p,
       label_ean: realLabelByItemId.get(p.shipment_item_id) ?? p.label_ean,
     }));

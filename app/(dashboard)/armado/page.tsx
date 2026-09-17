@@ -10,6 +10,7 @@ import type {
   ShipmentType,
   Operator,
   ScannedComponent,
+  ShipmentProgress,
 } from "@/types/database.types";
 
 type Feedback = { type: "ok" | "error"; message: string } | null;
@@ -126,9 +127,14 @@ export default function ArmadoPage() {
       .eq("shipment_item_id", itemId)
       .single();
 
-    if (data) {
-      setRequired(data.quantity_required);
-      setCompleted(data.quantity_completed);
+    // El cliente tipado no infiere bien las vistas (shipment_progress no es
+    // una tabla), así que acá casteamos a mano contra el tipo que ya
+    // tenemos escrito para esta vista.
+    const progress = data as ShipmentProgress | null;
+
+    if (progress) {
+      setRequired(progress.quantity_required);
+      setCompleted(progress.quantity_completed);
     }
   }
 
