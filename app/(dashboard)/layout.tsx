@@ -34,11 +34,14 @@ export default async function DashboardLayout({
   let logoUrl: string | null = null;
 
   if (profile?.company_id) {
-    const { data: companyData } = await supabase
+    const { data: companyDataRaw } = await supabase
       .from("companies")
       .select("name, logo_url")
       .eq("id", profile.company_id)
       .single();
+    // Mismo motivo de fondo que el casteo de "profile" de arriba — pasa
+    // incluso usando "?.", así que lo casteamos a mano.
+    const companyData = companyDataRaw as { name: string | null; logo_url: string | null } | null;
     companyName = companyData?.name ?? null;
     logoUrl = companyData?.logo_url ?? null;
   }

@@ -80,11 +80,16 @@ export default function RecetasPage() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await supabase
+      const { data: profileRaw } = await supabase
         .from("users")
         .select("company_id, role")
         .eq("id", user.id)
         .single();
+
+      // El cliente tipado no siempre resuelve bien el tipo de este resultado
+      // (mismo motivo de fondo que otros casteos de la app) — pasa incluso
+      // usando "?." — así que lo casteamos a mano.
+      const profile = profileRaw as { company_id: string; role: string } | null;
 
       setIsAdmin(profile?.role === "admin");
       setCompanyId(profile?.company_id ?? null);
