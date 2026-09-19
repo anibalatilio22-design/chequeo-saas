@@ -30,16 +30,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "No se recibió ningún archivo" }, { status: 400 });
   }
 
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
+  const arrayBuffer = await file.arrayBuffer();
 
+  // NOTA TEMPORAL DE DIAGNÓSTICO: separamos "cargar el PDF" de "sacarle el
+  // texto" en dos try/catch distintos, y devolvemos nombre + mensaje + las
+  // primeras líneas del stack de cualquier error, para poder ver en la
+  // propia pantalla en qué paso exacto se rompe y con qué error real —
+  // sin tener que andar buscando en los logs de Vercel. Una vez que
+  // encontremos la causa real, esto se puede volver a simplificar.
+  function debugInfo(step: string, err: unknown) {
+    if (err instanceof Error) {
+      const stackLines = (err.stack ?? "").split("\n").slice(0, 4).join(" | ");
+      return `[${step}] ${err.name}: ${err.message} — ${stackLines}`;
+    }
+    return `[${step}] ${String(err)}`;
+  }
+
+  let pdf;
+  try {
+    pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: debugInfo("getDocumentProxy", err) }, { status: 500 });
+  }
+
+  let pageTexts: string[];
+  try {
     // mergePages: false (el valor por defecto) nos devuelve un array con el
     // texto de cada página por separado — lo necesitamos así porque el
     // parseo de las cantidades ("UNIDADES") se hace página por página.
     const { text } = await extractText(pdf, { mergePages: false });
-    const pageTexts: string[] = Array.isArray(text) ? text : [text];
+    pageTexts = Array.isArray(text) ? text : [text];
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: debugInfo("extractText", err) }, { status: 500 });
+  }
 
+  try {
     const parsed = parseMercadoLibrePrepPdf(pageTexts);
 
     if (parsed.rows.length === 0) {
@@ -55,9 +80,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, ...parsed });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "Error al leer el PDF" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: debugInfo("parseMercadoLibrePrepPdf", err) }, { status: 500 });
   }
 }
