@@ -372,18 +372,22 @@ export default function ArmadoPage() {
         <div className="space-y-1">
           <label className="text-sm text-neutral-500">Tipo de envío</label>
           <div className="flex gap-2">
-            {(["full", "flex", "colecta"] as ShipmentType[]).map((t) => (
+            {/* Flex y Colecta se unificaron en un solo botón: el remito y la
+                etiqueta son prácticamente iguales (la única diferencia es
+                QR vs. código de barras, y el mismo lector lee los dos), así
+                que no tiene sentido manejarlos como envíos separados. */}
+            {(["full", "flex"] as ShipmentType[]).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setShipmentType(t)}
-                className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium capitalize ${
+                className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
                   shipmentType === t
                     ? "border-yellow-500 bg-yellow-100 text-neutral-900"
                     : "border-gray-300 bg-white text-neutral-600"
                 }`}
               >
-                {t}
+                {t === "flex" ? "Flex / Colecta" : "Full"}
               </button>
             ))}
           </div>

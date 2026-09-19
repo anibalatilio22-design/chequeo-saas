@@ -66,7 +66,9 @@ export default function EnviosPage() {
   const [flexWarnings, setFlexWarnings] = useState<string[]>([]);
   const [flexPacks, setFlexPacks] = useState<PreviewFlexPack[]>([]);
   const [flexShipmentCode, setFlexShipmentCode] = useState("");
-  const [flexShipmentType, setFlexShipmentType] = useState<ShipmentType>("flex");
+  // Ya no se elige (Flex y Colecta se unificaron, ver más abajo) — queda
+  // fijo en "flex" para toda importación de este tipo de documento.
+  const [flexShipmentType] = useState<ShipmentType>("flex");
   const [flexImporting, setFlexImporting] = useState(false);
   const [flexImportResult, setFlexImportResult] = useState<string | null>(null);
 
@@ -649,8 +651,7 @@ export default function EnviosPage() {
                     className="rounded-md border border-gray-300 px-3 py-2"
                   >
                     <option value="full">Full</option>
-                    <option value="flex">Flex</option>
-                    <option value="colecta">Colecta</option>
+                    <option value="flex">Flex / Colecta</option>
                   </select>
                 </div>
               </div>
@@ -834,17 +835,12 @@ export default function EnviosPage() {
             afuera — el resto del lote se importa igual.
           </p>
 
-          <div className="flex gap-3">
-            <input type="file" accept=".pdf" onChange={handleFlexPdfFile} className="text-sm" />
-            <select
-              value={flexShipmentType}
-              onChange={(e) => setFlexShipmentType(e.target.value as ShipmentType)}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="flex">Flex</option>
-              <option value="colecta">Colecta</option>
-            </select>
-          </div>
+          {/* Flex y Colecta se unificaron en un solo tipo ("flex") — el
+              remito y la etiqueta son prácticamente iguales (la única
+              diferencia es QR vs. código de barras, y el mismo lector lee
+              los dos), así que no hace falta que el admin elija entre las
+              dos cada vez que importa un lote. */}
+          <input type="file" accept=".pdf" onChange={handleFlexPdfFile} className="text-sm" />
 
           {flexParsing && <p className="text-sm text-neutral-500">Leyendo el PDF...</p>}
           {flexParseError && <p className="text-sm text-red-600">{flexParseError}</p>}
