@@ -56,9 +56,15 @@ export default function RecetasPage() {
       .order("name", { ascending: true });
     setProducts(productsData ?? []);
 
+    // Se excluyen las recetas que arma SOLO, automáticamente, el import de
+    // Flex/Colecta (una por cada paquete/venta — se marcan por dentro con
+    // el prefijo "FLEXPACK-" en label_ean). No son recetas de catálogo de
+    // verdad: no las carga ni las edita nadie a mano acá, así que no tiene
+    // sentido que aparezcan en esta lista.
     const { data: recipesData } = await supabase
       .from("recipes")
       .select("*")
+      .not("label_ean", "ilike", "FLEXPACK-%")
       .order("created_at", { ascending: false });
     setRecipes(recipesData ?? []);
 

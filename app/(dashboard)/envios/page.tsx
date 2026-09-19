@@ -4,11 +4,36 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Product, Recipe, Shipment, ShipmentProgress, ShipmentType } from "@/types/database.types";
 import type { ParsedMlRow } from "@/lib/parse-ml-pdf";
+import type { ParsedFlexPack, ParsedFlexProduct } from "@/lib/parse-ml-flex-pdf";
 
 // Cada fila del PDF, más el resultado de compararla contra el catálogo de
 // Productos/Recetas ya cargado: a qué receta corresponde (si se encontró),
 // para que el admin la confirme o la corrija antes de importar.
 type PreviewRow = ParsedMlRow & { recipeId: string | null };
+
+// Marca interna (en recipes.label_ean) de las recetas que arma SOLO el
+// import de Flex/Colecta, una por cada paquete — no son recetas de catálogo
+// de verdad (no las carga ni las edita el admin a mano), así que se
+// excluyen de todos lados donde se listan recetas "de verdad": el dropdown
+// de Full de acá abajo y la pantalla de Recetas.
+const FLEXPACK_LABEL_PREFIX = "FLEXPACK-";
+
+// Cada producto de un paquete de Flex/Colecta, más el resultado de
+// compararlo contra el catálogo — acá se compara solo por SKU (este
+// documento no trae EAN en ningún lado). Para poder armar la receta
+// automática de ese paquete hace falta que el producto EXISTA en el
+// catálogo Y tenga un EAN cargado (es lo que se termina escaneando en el
+// puesto de Armado) — "matched" es true solo cuando se cumplen las dos.
+type PreviewFlexProduct = ParsedFlexProduct & {
+  productId: string | null;
+  productEan: string | null;
+  matched: boolean;
+};
+
+type PreviewFlexPack = Omit<ParsedFlexPack, "products"> & {
+  products: PreviewFlexProduct[];
+  allMatched: boolean;
+};
 
 export default function EnviosPage() {
   const [supabase] = useState(() => createClient());
@@ -31,6 +56,19 @@ export default function EnviosPage() {
   const [shipmentType, setShipmentType] = useState<ShipmentType>("full");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+
+  // Importación de PDF de Flex/Colecta — estructura muy distinta a Full:
+  // acá cada "venta" (Identificación) es un paquete independiente que puede
+  // traer más de un producto, así que se maneja con su propio estado en vez
+  // de reutilizar el de arriba.
+  const [flexParsing, setFlexParsing] = useState(false);
+  const [flexParseError, setFlexParseError] = useState<string | null>(null);
+  const [flexWarnings, setFlexWarnings] = useState<string[]>([]);
+  const [flexPacks, setFlexPacks] = useState<PreviewFlexPack[]>([]);
+  const [flexShipmentCode, setFlexShipmentCode] = useState("");
+  const [flexShipmentType, setFlexShipmentType] = useState<ShipmentType>("flex");
+  const [flexImporting, setFlexImporting] = useState(false);
+  const [flexImportResult, setFlexImportResult] = useState<string | null>(null);
 
   // Items de cada envío ya cargado: qué receta/producto tiene cada línea,
   // cuánto se pidió y cuánto se lleva armado. Se muestran siempre, sin
@@ -88,7 +126,13 @@ export default function EnviosPage() {
   async function loadCatalog(): Promise<{ products: Product[]; recipes: Recipe[]; allRecipes: Recipe[] }> {
     const { data: productsData } = await supabase.from("products").select("*");
     setProducts(productsData ?? []);
-    const { data: allRecipesData } = await supabase.from("recipes").select("*");
+    // Se excluyen las recetas automáticas de paquetes de Flex/Colecta (ver
+    // FLEXPACK_LABEL_PREFIX más arriba) — acá abajo son ruido, no sirven
+    // para comparar contra un PDF de Full.
+    const { data: allRecipesData } = await supabase
+      .from("recipes")
+      .select("*")
+      .not("label_ean", "ilike", `${FLEXPACK_LABEL_PREFIX}%`);
     setAllRecipes(allRecipesData ?? []);
     const activeRecipes = ((allRecipesData ?? []) as Recipe[]).filter((r) => r.active);
     setRecipes(activeRecipes);
@@ -148,6 +192,14 @@ export default function EnviosPage() {
     if (rowSku) product = catalogProducts.find((p) => normalizeCode(p.sku) === rowSku);
     if (!product && rowEan) product = catalogProducts.find((p) => normalizeCode(p.ean) === rowEan);
     return product ?? null;
+  }
+
+  // Igual que matchProduct, pero solo por SKU: el documento de Flex/Colecta
+  // no trae EAN en ningún lado.
+  function matchProductBySku(sku: string | null, catalogProducts: Product[] = products): Product | null {
+    const normalized = normalizeCode(sku);
+    if (!normalized) return null;
+    return catalogProducts.find((p) => normalizeCode(p.sku) === normalized) ?? null;
   }
 
   // Busca en el catálogo qué receta corresponde a esta línea del PDF. No
@@ -258,6 +310,179 @@ export default function EnviosPage() {
     }
 
     setParsing(false);
+  }
+
+  async function handleFlexPdfFile(e: React.ChangeEvent<HTMLInputElement>) {
+    setFlexParseError(null);
+    setFlexImportResult(null);
+    setFlexWarnings([]);
+    setFlexPacks([]);
+
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFlexParsing(true);
+
+    // Mismo motivo que en el de Full: traer el catálogo más fresco posible
+    // justo antes de comparar.
+    const freshCatalog = await loadCatalog();
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/import/mercadolibre-flex-pdf", { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (!data.ok) {
+        setFlexParseError(data.error ?? "No se pudo leer el PDF");
+        setFlexParsing(false);
+        return;
+      }
+
+      const parsedPacks: ParsedFlexPack[] = data.packs;
+      setFlexPacks(
+        parsedPacks.map((pack) => {
+          const products: PreviewFlexProduct[] = pack.products.map((prod) => {
+            const product = matchProductBySku(prod.sku, freshCatalog.products);
+            return {
+              ...prod,
+              productId: product?.id ?? null,
+              productEan: product?.ean ?? null,
+              matched: !!product && !!product.ean,
+            };
+          });
+          return {
+            ...pack,
+            products,
+            allMatched: products.length > 0 && products.every((p) => p.matched),
+          };
+        })
+      );
+      setFlexWarnings(data.warnings ?? []);
+      const today = new Date().toISOString().slice(0, 10);
+      setFlexShipmentCode(`${flexShipmentType.toUpperCase()}-${today}`);
+    } catch {
+      setFlexParseError("Error de conexión al leer el PDF");
+    }
+
+    setFlexParsing(false);
+  }
+
+  async function handleConfirmFlexImport() {
+    if (!companyId || flexPacks.length === 0 || !flexShipmentCode.trim()) return;
+
+    setFlexImporting(true);
+    setFlexImportResult(null);
+
+    const { data: shipmentDataRaw, error: shipmentError } = await supabase
+      .from("shipments")
+      .insert({ company_id: companyId, code: flexShipmentCode.trim(), type: flexShipmentType, status: "open" } as any)
+      .select()
+      .single();
+
+    const shipmentData = shipmentDataRaw as { id: string; code: string } | null;
+
+    if (shipmentError || !shipmentData) {
+      setFlexImporting(false);
+      setFlexImportResult(`Error al crear el envío: ${shipmentError?.message}`);
+      return;
+    }
+
+    // Cada paquete (cada "Identificación" del PDF) se importa como un ítem
+    // propio del envío, con su propia receta armada sola con los productos
+    // de ESE paquete puntual — así se arma y se verifica cada paquete por
+    // separado, no como una bolsa común de unidades sueltas: a diferencia
+    // de Full, acá cada paquete termina siendo una caja distinta para un
+    // comprador distinto. "quantity_required" queda en 1 siempre (el
+    // paquete se arma una sola vez); lo que puede pedir más de una unidad
+    // es cada PRODUCTO adentro del paquete, y eso vive en su receta
+    // (recipe_components.quantity), igual que un combo de Full.
+    //
+    // Si a un paquete le falta algún producto en el catálogo, o el
+    // producto no tiene EAN cargado (hace falta para poder escanearlo en
+    // Armado), ese paquete entero queda afuera — el resto se importa igual.
+    let ok = 0;
+    const sinProducto: string[] = [];
+    const errors: string[] = [];
+
+    for (const pack of flexPacks) {
+      if (!pack.allMatched) {
+        const faltantes = pack.products
+          .filter((p) => !p.matched)
+          .map((p) => p.sku ?? p.name)
+          .join(", ");
+        sinProducto.push(`${pack.itemId} (${pack.buyerName || "sin nombre"}) — falta: ${faltantes}`);
+        continue;
+      }
+
+      const { data: recipeDataRaw, error: recipeError } = await supabase
+        .from("recipes")
+        .insert({
+          company_id: companyId,
+          label_ean: `${FLEXPACK_LABEL_PREFIX}${pack.itemId}`,
+          name: `Flex/Colecta — ${pack.buyerName || pack.itemId}`,
+          active: true,
+          output_product_id: null,
+        } as any)
+        .select()
+        .single();
+
+      const recipeData = recipeDataRaw as { id: string } | null;
+
+      if (recipeError || !recipeData) {
+        errors.push(`${pack.itemId}: no se pudo crear la receta automática (${recipeError?.message})`);
+        continue;
+      }
+
+      const { error: componentsError } = await supabase.from("recipe_components").insert(
+        pack.products.map((p) => ({
+          company_id: companyId,
+          recipe_id: recipeData.id,
+          product_ean: p.productEan!,
+          product_sku: p.sku,
+          product_name: p.name,
+          quantity: p.quantity,
+        })) as any
+      );
+
+      if (componentsError) {
+        errors.push(`${pack.itemId}: no se pudieron cargar sus productos (${componentsError.message})`);
+        continue;
+      }
+
+      // El "código a escanear" de este ítem es el número de la venta/envío
+      // individual (el mismo que se ve impreso en la etiqueta de envío con
+      // su código QR) — no un EAN de producto.
+      const { error: itemError } = await supabase.from("shipment_items").insert({
+        company_id: companyId,
+        shipment_id: shipmentData.id,
+        recipe_id: recipeData.id,
+        quantity_required: 1,
+        label_ean: pack.itemId,
+      } as any);
+
+      if (itemError) {
+        errors.push(`${pack.itemId}: ${itemError.message}`);
+        continue;
+      }
+
+      ok += 1;
+    }
+
+    setFlexImporting(false);
+    setFlexImportResult(
+      `Envío "${shipmentData.code}" creado con ${ok} de ${flexPacks.length} paquetes.` +
+        (sinProducto.length > 0
+          ? ` Estos paquetes quedaron afuera porque les falta algún producto en el catálogo o algún producto sin EAN cargado (cargalos en Productos antes de reintentar): ${sinProducto.join(
+              " | "
+            )}.`
+          : "") +
+        (errors.length > 0 ? ` Errores: ${errors.join(" | ")}` : "")
+    );
+    setFlexPacks([]);
+    setFlexShipmentCode("");
+    loadShipments();
   }
 
   function updateRow(index: number, field: keyof ParsedMlRow, value: string) {
@@ -592,6 +817,122 @@ export default function EnviosPage() {
           )}
 
           {importResult && <p className="text-sm text-green-700">{importResult}</p>}
+        </section>
+      )}
+
+      {isAdmin && (
+        <section className="space-y-4 rounded-lg border border-gray-200 p-4">
+          <h2 className="text-lg font-medium">Importar desde PDF de Mercado Libre (Flex / Colecta)</h2>
+          <p className="text-sm text-neutral-500">
+            Subí el PDF de &quot;Identificación / Productos&quot; que arma Mercado Libre para un lote de
+            envíos Flex o Colecta. Acá cada venta (cada &quot;Identificación&quot;) se importa como un
+            paquete propio, con su propia receta armada sola con los productos de esa venta puntual —
+            las unidades no se mezclan entre paquetes distintos, porque cada uno termina siendo una
+            caja separada para un comprador distinto. El emparejamiento es por SKU (este documento no
+            trae EAN). Si a un paquete le falta algún producto en el catálogo, o el producto no tiene
+            un EAN cargado (hace falta para poder escanearlo en Armado), ese paquete entero queda
+            afuera — el resto del lote se importa igual.
+          </p>
+
+          <div className="flex gap-3">
+            <input type="file" accept=".pdf" onChange={handleFlexPdfFile} className="text-sm" />
+            <select
+              value={flexShipmentType}
+              onChange={(e) => setFlexShipmentType(e.target.value as ShipmentType)}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="flex">Flex</option>
+              <option value="colecta">Colecta</option>
+            </select>
+          </div>
+
+          {flexParsing && <p className="text-sm text-neutral-500">Leyendo el PDF...</p>}
+          {flexParseError && <p className="text-sm text-red-600">{flexParseError}</p>}
+
+          {flexWarnings.length > 0 && (
+            <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800">
+              {flexWarnings.map((w, i) => (
+                <p key={i}>⚠ {w}</p>
+              ))}
+            </div>
+          )}
+
+          {flexPacks.length > 0 && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-sm text-neutral-500">Código del envío (del lote completo)</label>
+                <input
+                  value={flexShipmentCode}
+                  onChange={(e) => setFlexShipmentCode(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </div>
+
+              <p className="text-sm text-neutral-700">
+                {flexPacks.length} paquetes detectados.
+                {flexPacks.some((p) => !p.allMatched) && (
+                  <span className="ml-1 font-semibold text-red-600">
+                    {flexPacks.filter((p) => !p.allMatched).length} van a quedar afuera por productos
+                    sin catálogo o sin EAN.
+                  </span>
+                )}
+              </p>
+
+              <div className="max-h-96 space-y-2 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                {flexPacks.map((pack, i) => (
+                  <div
+                    key={i}
+                    className={`rounded-md border p-3 ${
+                      pack.allMatched ? "border-gray-200" : "border-red-300 bg-red-50"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <span className="font-semibold">{pack.itemId}</span>
+                        {pack.packId && <span className="ml-2 text-neutral-500">Pack: {pack.packId}</span>}
+                        <span className="ml-2 text-neutral-500">{pack.buyerName || "(sin nombre)"}</span>
+                      </div>
+                      {pack.allMatched ? (
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                          ✓ Listo para importar
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                          ✗ No se va a importar
+                        </span>
+                      )}
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {pack.products.map((p, j) => (
+                        <li key={j} className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+                          <span className={p.matched ? "text-neutral-700" : "font-semibold text-red-600"}>
+                            {p.matched ? "✓" : "✗"} {p.name}
+                          </span>
+                          <span className="text-neutral-400">SKU: {p.sku ?? "—"}</span>
+                          <span className="text-neutral-400">Cant: {p.quantity}</span>
+                          {!p.matched && (
+                            <span className="text-red-600">
+                              {p.productId ? "sin EAN cargado en Productos" : "no está en el catálogo"}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={handleConfirmFlexImport}
+                disabled={flexImporting || !flexShipmentCode.trim()}
+                className="rounded-md bg-yellow-400 px-4 py-2 font-semibold text-neutral-900 disabled:opacity-50"
+              >
+                {flexImporting ? "Importando..." : "Confirmar e importar"}
+              </button>
+            </div>
+          )}
+
+          {flexImportResult && <p className="text-sm text-green-700">{flexImportResult}</p>}
         </section>
       )}
 
