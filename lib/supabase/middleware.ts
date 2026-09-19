@@ -29,13 +29,20 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Rutas públicas: login, alta de cuenta nueva (página + API) y assets.
-  // Todo lo demás requiere sesión.
+  // Rutas públicas: login, alta de cuenta nueva (página + API), recuperar
+  // contraseña y assets. Todo lo demás requiere sesión.
+  //
+  // "/reset-password" tiene que ser pública aunque todavía no haya sesión:
+  // el link del mail de recuperación trae el token después del "#" en la
+  // URL, que nunca llega al servidor (solo lo ve el navegador). Si esta
+  // ruta no fuera pública, este mismo middleware redirigiría a /login ANTES
+  // de que el código de la página tuviera la chance de leer ese token.
   const pathname = request.nextUrl.pathname;
   const isPublicPath =
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
-    pathname.startsWith("/api/signup");
+    pathname.startsWith("/api/signup") ||
+    pathname.startsWith("/reset-password");
 
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
