@@ -56,6 +56,33 @@ export interface Product {
   created_at: string;
 }
 
+// Sucursal/depósito — primer paso del módulo de Stock. Hoy cada empresa
+// tiene una sola (creada sola por la migración de stock), pero queda listo
+// para el día que haga falta una segunda.
+export interface Location {
+  id: string;
+  company_id: string;
+  name: string;
+  created_at: string;
+}
+
+// Cuánto hay de un producto en una sucursal puntual. "last_received_at" lo
+// pone el propio sistema (hora del servidor) cada vez que la cantidad
+// SUBE — nunca se escribe a mano, y no se toca si la cantidad baja (eso es
+// un ajuste, no un ingreso). Es la base de "Stock" en el futuro modelo de
+// Stock/Reservado/Disponible — todavía no existen "Reservado" ni
+// "Disponible" como datos guardados, se van a poder calcular a partir de
+// los envíos abiertos cuando se sumen.
+export interface ProductStock {
+  id: string;
+  company_id: string;
+  product_id: string;
+  location_id: string;
+  quantity: number;
+  last_received_at: string | null;
+  updated_at: string;
+}
+
 export interface Recipe {
   id: string;
   company_id: string;
@@ -151,6 +178,13 @@ export interface Database {
       workstations: { Row: Workstation; Insert: Partial<Workstation>; Update: Partial<Workstation>; Relationships: [] };
       operators: { Row: Operator; Insert: Partial<Operator>; Update: Partial<Operator>; Relationships: [] };
       products: { Row: Product; Insert: Partial<Product>; Update: Partial<Product>; Relationships: [] };
+      locations: { Row: Location; Insert: Partial<Location>; Update: Partial<Location>; Relationships: [] };
+      product_stock: {
+        Row: ProductStock;
+        Insert: Partial<ProductStock>;
+        Update: Partial<ProductStock>;
+        Relationships: [];
+      };
       recipes: { Row: Recipe; Insert: Partial<Recipe>; Update: Partial<Recipe>; Relationships: [] };
       recipe_components: {
         Row: RecipeComponent;

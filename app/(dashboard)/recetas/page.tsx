@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
-import type { Product, Recipe, RecipeComponent } from "@/types/database.types";
+import type { Product, Recipe, RecipeComponent, ProductStock } from "@/types/database.types";
 
 type ComponentDraft = { ean: string; sku: string; name: string; quantity: string };
 
@@ -49,12 +49,45 @@ export default function RecetasPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [componentsByRecipe, setComponentsByRecipe] = useState<Record<string, RecipeComponent[]>>({});
 
+  // Stock — primer paso del módulo de Stock/Reservado/Disponible. Hoy hay
+  // una sola sucursal por empresa (se crea sola con la migración), así que
+  // alcanza con guardar su id y el stock de cada producto EN ESA sucursal.
+  const [defaultLocationId, setDefaultLocationId] = useState<string | null>(null);
+  const [stockByProductId, setStockByProductId] = useState<Record<string, ProductStock>>({});
+  const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({});
+  const [stockSavingFor, setStockSavingFor] = useState<Record<string, boolean>>({});
+  const [stockError, setStockError] = useState<string | null>(null);
+
   async function loadData() {
     const { data: productsData } = await supabase
       .from("products")
       .select("*")
       .order("name", { ascending: true });
     setProducts(productsData ?? []);
+
+    // La sucursal/depósito por defecto: hoy siempre hay una sola (la creó
+    // sola la migración de stock para cada empresa existente). Si por algún
+    // motivo no hay ninguna todavía, queda null y la columna de Stock
+    // simplemente no se muestra (no rompe el resto de la pantalla).
+    const { data: locationsData } = await supabase
+      .from("locations")
+      .select("*")
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const location = (locationsData ?? [])[0] as { id: string } | undefined;
+    setDefaultLocationId(location?.id ?? null);
+
+    if (location) {
+      const { data: stockData } = await supabase
+        .from("product_stock")
+        .select("*")
+        .eq("location_id", location.id);
+      const stockMap: Record<string, ProductStock> = {};
+      ((stockData ?? []) as ProductStock[]).forEach((s) => {
+        stockMap[s.product_id] = s;
+      });
+      setStockByProductId(stockMap);
+    }
 
     // Se excluyen las recetas que arma SOLO, automáticamente, el import de
     // Flex/Colecta (una por cada paquete/venta — se marcan por dentro con
@@ -107,6 +140,84 @@ export default function RecetasPage() {
 
   function productById(id: string | null) {
     return products.find((p) => p.id === id) ?? null;
+  }
+
+  // Valor a mostrar en el campo de Stock de un producto: mientras se está
+  // editando ese campo puntual, el texto que se está escribiendo; si no, el
+  // número guardado (o "0" si todavía no tiene fila de stock cargada).
+  function stockDraftValue(productId: string): string {
+    if (stockDrafts[productId] !== undefined) return stockDrafts[productId];
+    return String(stockByProductId[productId]?.quantity ?? 0);
+  }
+
+  async function saveStock(productId: string) {
+    if (!companyId || !defaultLocationId) return;
+    const draft = stockDrafts[productId];
+    if (draft === undefined) return;
+
+    const newQuantity = parseInt(draft, 10);
+    if (isNaN(newQuantity) || newQuantity < 0) {
+      setStockError("El stock tiene que ser un número de 0 para arriba.");
+      return;
+    }
+
+    setStockError(null);
+    setStockSavingFor((prev) => ({ ...prev, [productId]: true }));
+
+    const existing = stockByProductId[productId];
+    // La fecha de "último ingreso" la pone el propio sistema (hora del
+    // servidor) y SOLO cuando la cantidad sube — si baja (una corrección,
+    // no una llegada de mercadería nueva), esa fecha se deja como estaba.
+    const isIngreso = newQuantity > (existing?.quantity ?? 0);
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from("product_stock")
+        .update({
+          quantity: newQuantity,
+          ...(isIngreso ? { last_received_at: new Date().toISOString() } : {}),
+        } as any)
+        .eq("id", existing.id)
+        .select()
+        .single();
+
+      if (!error && data) {
+        setStockByProductId((prev) => ({ ...prev, [productId]: data as ProductStock }));
+      } else if (error) {
+        setStockError(`No se pudo guardar el stock: ${error.message}`);
+      }
+    } else {
+      const { data, error } = await supabase
+        .from("product_stock")
+        .insert({
+          company_id: companyId,
+          product_id: productId,
+          location_id: defaultLocationId,
+          quantity: newQuantity,
+          last_received_at: isIngreso ? new Date().toISOString() : null,
+        } as any)
+        .select()
+        .single();
+
+      if (!error && data) {
+        setStockByProductId((prev) => ({ ...prev, [productId]: data as ProductStock }));
+      } else if (error) {
+        setStockError(`No se pudo guardar el stock: ${error.message}`);
+      }
+    }
+
+    setStockSavingFor((prev) => ({ ...prev, [productId]: false }));
+    setStockDrafts((prev) => {
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+  }
+
+  function formatLastReceived(iso: string | null | undefined): string {
+    if (!iso) return "sin ingresos registrados";
+    const d = new Date(iso);
+    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
   // Productos que quedaron cargados de cuando Productos y Recetas todavía
@@ -799,7 +910,7 @@ export default function RecetasPage() {
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
-      <h1 className="text-xl font-semibold">Catálogo</h1>
+      <h1 className="text-xl font-semibold">Stock</h1>
 
       {isAdmin && orphanProducts.length > 0 && (
         <section className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4">
@@ -1017,7 +1128,7 @@ export default function RecetasPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-medium">
-              Catálogo cargado ({filteredRecipes.length}
+              Stock cargado ({filteredRecipes.length}
               {query ? ` de ${recipes.length}` : ""})
             </h2>
           </div>
@@ -1053,6 +1164,7 @@ export default function RecetasPage() {
         )}
         {deleteError && <p className="text-sm text-red-600">{deleteError}</p>}
         {bulkResult && <p className="text-sm text-neutral-700">{bulkResult}</p>}
+        {stockError && <p className="text-sm text-red-600">{stockError}</p>}
 
         <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
           {filteredRecipes.map((recipe) => {
@@ -1178,6 +1290,29 @@ export default function RecetasPage() {
                       · {components.length} producto{components.length === 1 ? "" : "s"}
                     </span>
                   </button>
+                  {outputProduct && defaultLocationId && (
+                    <div
+                      className="flex shrink-0 items-center gap-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Último ingreso: ${formatLastReceived(stockByProductId[outputProduct.id]?.last_received_at)}`}
+                    >
+                      <label className="text-xs text-neutral-400">Stock</label>
+                      <input
+                        type="number"
+                        min={0}
+                        disabled={!isAdmin}
+                        value={stockDraftValue(outputProduct.id)}
+                        onChange={(e) =>
+                          setStockDrafts((prev) => ({ ...prev, [outputProduct.id]: e.target.value }))
+                        }
+                        onBlur={() => saveStock(outputProduct.id)}
+                        className="w-16 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-50"
+                      />
+                      {stockSavingFor[outputProduct.id] && (
+                        <span className="text-xs text-neutral-400">...</span>
+                      )}
+                    </div>
+                  )}
                   {isAdmin && (
                     <div className="flex shrink-0 items-center gap-3">
                       <button onClick={() => startEdit(recipe)} className="text-sm text-neutral-600">
