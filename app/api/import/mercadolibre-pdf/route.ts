@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { parseMercadoLibrePrepPdf } from "@/lib/parse-ml-pdf";
+import { getDocumentProxy, extractText } from "unpdf";
 
-// Usamos "pdf-parse" en vez de "pdfjs-dist" directo para leer el texto del
-// PDF en el servidor. pdfjs-dist necesita configurar un archivo de "worker"
-// (pensado para el navegador) y, empaquetado dentro de una Route Handler de
-// Next.js, esa configuración se rompe en producción con el error
-// "Setting up fake worker failed: e.endsWith is not a function". pdf-parse
-// resuelve todo internamente sin necesitar ningún worker, así que evitamos
-// ese problema de raíz.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pdfParse: any = require("pdf-parse");
-
+// Ya probamos "pdfjs-dist" y después "pdf-parse" para leer el texto del PDF
+// en el servidor, y las dos rompían en producción (Vercel) con el error
+// "Setting up fake worker failed: e.endsWith is not a function", porque las
+// dos usan por debajo el mismo motor (pdf.js) que intenta configurar un Web
+// Worker — algo pensado para el navegador — y esa configuración se rompe
+// cuando queda empaquetada dentro de una Route Handler serverless.
+//
+// "unpdf" está armado a propósito para entornos serverless (Vercel, Lambda,
+// Cloudflare Workers, etc.): no usa ningún Worker, así que este problema no
+// debería volver a aparecer.
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -31,24 +32,13 @@ export async function POST(request: Request) {
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
 
-    // pdf-parse recorre las páginas en orden y nos permite "engancharnos" al
-    // render de cada una para armar nuestro propio texto por página (igual
-    // que antes hacíamos a mano con pdfjs-dist), en vez de quedarnos solo
-    // con el texto completo del documento pegado en un solo bloque.
-    const pageTexts: string[] = [];
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async function pagerender(pageData: any) {
-      const content = await pageData.getTextContent();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const text = content.items.map((item: any) => item.str).join(" ");
-      pageTexts.push(text);
-      return text;
-    }
-
-    await pdfParse(buffer, { pagerender });
+    // mergePages: false (el valor por defecto) nos devuelve un array con el
+    // texto de cada página por separado — lo necesitamos así porque el
+    // parseo de las cantidades ("UNIDADES") se hace página por página.
+    const { text } = await extractText(pdf, { mergePages: false });
+    const pageTexts: string[] = Array.isArray(text) ? text : [text];
 
     const parsed = parseMercadoLibrePrepPdf(pageTexts);
 
