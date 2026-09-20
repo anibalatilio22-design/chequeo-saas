@@ -18,7 +18,8 @@
     "zod": "^3.23.0",
     "papaparse": "^5.4.1",
     "xlsx": "^0.18.5",
-    "unpdf": "^1.4.0"
+    "unpdf": "^1.4.0",
+    "jspdf": "^2.5.2"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
