@@ -171,12 +171,11 @@ export default function RecetasPage() {
     const isIngreso = newQuantity > (existing?.quantity ?? 0);
 
     if (existing) {
-      const { data, error } = await supabase
-        .from("product_stock")
+      const { data, error } = await (supabase.from("product_stock") as any)
         .update({
           quantity: newQuantity,
           ...(isIngreso ? { last_received_at: new Date().toISOString() } : {}),
-        } as any)
+        })
         .eq("id", existing.id)
         .select()
         .single();
