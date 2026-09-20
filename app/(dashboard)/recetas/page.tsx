@@ -97,7 +97,7 @@ export default function RecetasPage() {
     const { data: recipesData } = await supabase
       .from("recipes")
       .select("*")
-      .not("label_ean", "ilike", "FLEXPACK-%")
+      .or("label_ean.is.null,label_ean.not.ilike.FLEXPACK-%")
       .order("created_at", { ascending: false });
     setRecipes(recipesData ?? []);
 

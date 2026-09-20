@@ -134,7 +134,7 @@ export default function EnviosPage() {
     const { data: allRecipesData } = await supabase
       .from("recipes")
       .select("*")
-      .not("label_ean", "ilike", `${FLEXPACK_LABEL_PREFIX}%`);
+      .or(`label_ean.is.null,label_ean.not.ilike.${FLEXPACK_LABEL_PREFIX}%`);
     setAllRecipes(allRecipesData ?? []);
     const activeRecipes = ((allRecipesData ?? []) as Recipe[]).filter((r) => r.active);
     setRecipes(activeRecipes);
