@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const TABS = [
   { href: "/armado", label: "Chequeo", adminOnly: false },
-  { href: "/recetas", label: "Stock", adminOnly: false },
+  { href: "/recetas", label: "Catálogo", adminOnly: false },
   { href: "/envios", label: "Envío", adminOnly: false },
   { href: "/progreso", label: "Progreso", adminOnly: false },
   { href: "/config", label: "Configuración", adminOnly: true },

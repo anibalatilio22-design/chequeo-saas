@@ -909,7 +909,7 @@ export default function RecetasPage() {
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
-      <h1 className="text-xl font-semibold">Stock</h1>
+      <h1 className="text-xl font-semibold">Catálogo</h1>
 
       {isAdmin && orphanProducts.length > 0 && (
         <section className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4">
@@ -1127,7 +1127,7 @@ export default function RecetasPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-medium">
-              Stock cargado ({filteredRecipes.length}
+              Catálogo cargado ({filteredRecipes.length}
               {query ? ` de ${recipes.length}` : ""})
             </h2>
           </div>
