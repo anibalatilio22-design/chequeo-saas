@@ -643,6 +643,18 @@ export default function RecetasPage() {
       return;
     }
 
+    // Además de la ficha (receta), borramos el producto final que le
+    // correspondía a ESTE ítem puntual — si no, queda "huérfano" (cargado
+    // pero sin ficha) y hay que volver a completarlo después. Si ese mismo
+    // producto todavía se usa en otro lado (por ejemplo, como componente de
+    // otro combo), la base de datos rechaza sola este borrado por la
+    // relación entre tablas — el producto queda intacto y no se rompe nada.
+    // Por eso el resultado de este borrado no se chequea: si falla, es
+    // justamente porque hace falta en otro lado, y está bien que quede.
+    if (recipe.output_product_id) {
+      await supabase.from("products").delete().eq("id", recipe.output_product_id);
+    }
+
     loadData();
   }
 
@@ -677,8 +689,17 @@ export default function RecetasPage() {
     for (const id of ids) {
       const r = recipes.find((x) => x.id === id);
       const { error } = await supabase.from("recipes").delete().eq("id", id);
-      if (error) blocked.push(r?.name ?? id);
-      else ok += 1;
+      if (error) {
+        blocked.push(r?.name ?? id);
+      } else {
+        ok += 1;
+        // Mismo criterio que en el borrado individual: se intenta borrar
+        // también el producto final de este ítem, y si falla (porque se usa
+        // en otro combo) se deja como está, sin avisar — no es un error.
+        if (r?.output_product_id) {
+          await supabase.from("products").delete().eq("id", r.output_product_id);
+        }
+      }
     }
 
     setBulkDeleting(false);
