@@ -12,6 +12,58 @@ type CompletionRow = {
   workstation_name: string;
 };
 
+type OperarioGroup = {
+  operator_name: string;
+  workstation_name: string;
+  count: number;
+  minAt: string;
+  maxAt: string;
+};
+
+// Agrupa los armados de un mismo producto por operario+puesto, para no
+// imprimir una línea por cada unidad en el remito cuando son muchas (ej: un
+// combo de 20 unidades armado por la misma persona).
+function groupCompletionsByOperario(rows: CompletionRow[]): OperarioGroup[] {
+  const map = new Map<string, OperarioGroup>();
+  for (const r of rows) {
+    const key = `${r.operator_name}__${r.workstation_name}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (r.completed_at < existing.minAt) existing.minAt = r.completed_at;
+      if (r.completed_at > existing.maxAt) existing.maxAt = r.completed_at;
+    } else {
+      map.set(key, {
+        operator_name: r.operator_name,
+        workstation_name: r.workstation_name,
+        count: 1,
+        minAt: r.completed_at,
+        maxAt: r.completed_at,
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function formatShortDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Línea que va en la columna "Armado por": quién, en qué puesto, cuántas
+// unidades y en qué rango horario — así, si hay un error, se puede buscar
+// ese rango por las cámaras de seguridad.
+function formatOperarioGroupLine(g: OperarioGroup): string {
+  const from = formatShortDateTime(g.minAt);
+  const to = formatShortDateTime(g.maxAt);
+  const when = from === to ? from : `${from} a ${to}`;
+  return `${g.operator_name} — puesto: ${g.workstation_name} — ${g.count} un. — ${when}`;
+}
+
 export default function ProgresoPage() {
   const [supabase] = useState(() => createClient());
 
@@ -288,51 +340,77 @@ export default function ProgresoPage() {
       doc.text(`Generado: ${new Date().toLocaleString("es-AR")}`, marginX, y);
       y += 10;
 
-      function ensureSpace(lines: number) {
-        if (y + lines * 6 > pageHeight - 25) {
-          doc.addPage();
-          y = 20;
-        }
-      }
+      // Tabla del remito: Producto | Cantidad armada | Quién lo armó.
+      // La columna "Armado por" va agrupada por operario+puesto (no una
+      // línea por cada unidad), para que un combo de 10/20/40 unidades no
+      // haga el remito interminable, tal como en el remito de Mercado Libre.
+      const col1X = marginX;
+      const col1W = 70;
+      const col2X = col1X + col1W;
+      const col2W = 20;
+      const col3X = col2X + col2W;
+      const col3W = pageWidth - marginX - col3X;
+      const lineH = 4.5;
 
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      ensureSpace(1);
-      doc.text("Producto", marginX, y);
-      doc.text("Cant.", pageWidth - marginX - 15, y);
-      y += 2;
-      doc.setDrawColor(220);
-      doc.line(marginX, y, pageWidth - marginX, y);
-      y += 5;
-
-      for (const p of progress) {
-        ensureSpace(2);
-        doc.setFont("helvetica", "normal");
+      function drawTableHeader() {
+        doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
         doc.setTextColor(0);
-        const productLines = doc.splitTextToSize(p.recipe_name, pageWidth - marginX * 2 - 20);
-        doc.text(productLines, marginX, y);
-        doc.text(`${p.quantity_completed}/${p.quantity_required}`, pageWidth - marginX - 15, y);
-        y += productLines.length * 5;
-
-        // Detalle de quién armó cada unidad, en qué puesto y cuándo — para
-        // poder rastrear un error por las cámaras de seguridad.
-        const detail = completionsByItemId.get(p.shipment_item_id) ?? [];
-        doc.setFontSize(8);
-        doc.setTextColor(110);
-        for (const c of detail) {
-          ensureSpace(1);
-          const line = `  · ${c.operator_name} — puesto: ${c.workstation_name} — ${new Date(
-            c.completed_at
-          ).toLocaleString("es-AR")}`;
-          doc.text(line, marginX, y);
-          y += 4;
-        }
-        doc.setTextColor(0);
-        y += 3;
+        doc.text("Producto", col1X + 1, y);
+        doc.text("Cant.", col2X + 1, y);
+        doc.text("Armado por", col3X + 1, y);
+        y += 2;
+        doc.setDrawColor(120);
+        doc.line(marginX, y, pageWidth - marginX, y);
+        y += 5;
       }
 
-      ensureSpace(6);
+      // Devuelve true si tuvo que saltar de página (para poder repetir el
+      // encabezado de la tabla arriba de cada página nueva).
+      function ensureSpace(rowHeight: number): boolean {
+        if (y + rowHeight > pageHeight - 25) {
+          doc.addPage();
+          y = 20;
+          return true;
+        }
+        return false;
+      }
+
+      drawTableHeader();
+
+      for (const p of progress) {
+        const productLines = doc.splitTextToSize(p.recipe_name, col1W - 2);
+        const detail = completionsByItemId.get(p.shipment_item_id) ?? [];
+        const groups = groupCompletionsByOperario(detail);
+        const armadoLines: string[] =
+          groups.length > 0
+            ? groups.flatMap((g) => doc.splitTextToSize(formatOperarioGroupLine(g), col3W - 2))
+            : ["Todavía no se registró ningún armado."];
+
+        const rowLines = Math.max(productLines.length, armadoLines.length, 1);
+        const rowHeight = rowLines * lineH + 3;
+
+        if (ensureSpace(rowHeight)) drawTableHeader();
+        const rowTop = y;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(0);
+        doc.text(productLines, col1X + 1, y + lineH - 1);
+        doc.text(`${p.quantity_completed}/${p.quantity_required}`, col2X + 1, y + lineH - 1);
+        doc.setTextColor(90);
+        doc.text(armadoLines, col3X + 1, y + lineH - 1);
+        doc.setTextColor(0);
+
+        y = rowTop + rowHeight;
+        doc.setDrawColor(225);
+        doc.line(col2X, rowTop, col2X, y);
+        doc.line(col3X, rowTop, col3X, y);
+        doc.line(marginX, y, pageWidth - marginX, y);
+        y += 1;
+      }
+
+      ensureSpace(30);
       y += 10;
       doc.setDrawColor(180);
       doc.line(marginX, y, marginX + 70, y);
