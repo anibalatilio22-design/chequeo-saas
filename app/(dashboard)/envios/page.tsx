@@ -20,10 +20,13 @@ const FLEXPACK_LABEL_PREFIX = "FLEXPACK-";
 
 // Cada producto de un paquete de Flex/Colecta, más el resultado de
 // compararlo contra el catálogo — acá se compara solo por SKU (este
-// documento no trae EAN en ningún lado). Para poder armar la receta
-// automática de ese paquete hace falta que el producto EXISTA en el
-// catálogo Y tenga un EAN cargado (es lo que se termina escaneando en el
-// puesto de Armado) — "matched" es true solo cuando se cumplen las dos.
+// documento no trae EAN en ningún lado). "matched" es true en cuanto el
+// producto EXISTE en el catálogo, tenga o no tenga EAN cargado: si le
+// falta el EAN, se usa su SKU como código a escanear en Armado (mismo
+// criterio que ya usa el resto de la app — Recetas, carga por Excel,
+// "Terminar de cargar" — y que Armado ya sabe reconocer: ahí se matchea
+// contra EAN O contra SKU). Lo único que deja a un producto afuera es que
+// ni siquiera esté cargado en el catálogo.
 type PreviewFlexProduct = ParsedFlexProduct & {
   productId: string | null;
   productEan: string | null;
@@ -347,11 +350,14 @@ export default function EnviosPage() {
         parsedPacks.map((pack) => {
           const products: PreviewFlexProduct[] = pack.products.map((prod) => {
             const product = matchProductBySku(prod.sku, freshCatalog.products);
+            // Si el producto no tiene EAN cargado, usamos su SKU como
+            // código de todos modos (ver el comentario del tipo de arriba)
+            // en vez de dejarlo sin código y bloquear el paquete entero.
             return {
               ...prod,
               productId: product?.id ?? null,
-              productEan: product?.ean ?? null,
-              matched: !!product && !!product.ean,
+              productEan: product ? product.ean || product.sku || null : null,
+              matched: !!product,
             };
           });
           return {
@@ -401,9 +407,10 @@ export default function EnviosPage() {
     // es cada PRODUCTO adentro del paquete, y eso vive en su receta
     // (recipe_components.quantity), igual que un combo de Full.
     //
-    // Si a un paquete le falta algún producto en el catálogo, o el
-    // producto no tiene EAN cargado (hace falta para poder escanearlo en
-    // Armado), ese paquete entero queda afuera — el resto se importa igual.
+    // Si a un paquete le falta algún producto en el catálogo (ni EAN ni
+    // SKU cargado), ese paquete entero queda afuera — el resto se importa
+    // igual. Si el producto está pero le falta el EAN, se usa el SKU como
+    // código a escanear en Armado, así que eso ya no bloquea nada.
     let ok = 0;
     const sinProducto: string[] = [];
     const errors: string[] = [];
@@ -476,7 +483,7 @@ export default function EnviosPage() {
     setFlexImportResult(
       `Envío "${shipmentData.code}" creado con ${ok} de ${flexPacks.length} paquetes.` +
         (sinProducto.length > 0
-          ? ` Estos paquetes quedaron afuera porque les falta algún producto en el catálogo o algún producto sin EAN cargado (cargalos en Productos antes de reintentar): ${sinProducto.join(
+          ? ` Estos paquetes quedaron afuera porque les falta algún producto en el catálogo (cargalos en Productos antes de reintentar): ${sinProducto.join(
               " | "
             )}.`
           : "") +
@@ -830,9 +837,8 @@ export default function EnviosPage() {
             paquete propio, con su propia receta armada sola con los productos de esa venta puntual —
             las unidades no se mezclan entre paquetes distintos, porque cada uno termina siendo una
             caja separada para un comprador distinto. El emparejamiento es por SKU (este documento no
-            trae EAN). Si a un paquete le falta algún producto en el catálogo, o el producto no tiene
-            un EAN cargado (hace falta para poder escanearlo en Armado), ese paquete entero queda
-            afuera — el resto del lote se importa igual.
+            trae EAN). Si a un paquete le falta algún producto en el catálogo (ni EAN ni SKU cargado),
+            ese paquete entero queda afuera — el resto del lote se importa igual.
           </p>
 
           {/* Flex y Colecta se unificaron en un solo tipo ("flex") — el
@@ -869,7 +875,7 @@ export default function EnviosPage() {
                 {flexPacks.some((p) => !p.allMatched) && (
                   <span className="ml-1 font-semibold text-red-600">
                     {flexPacks.filter((p) => !p.allMatched).length} van a quedar afuera por productos
-                    sin catálogo o sin EAN.
+                    que no están en el catálogo.
                   </span>
                 )}
               </p>
@@ -906,11 +912,7 @@ export default function EnviosPage() {
                           </span>
                           <span className="text-neutral-400">SKU: {p.sku ?? "—"}</span>
                           <span className="text-neutral-400">Cant: {p.quantity}</span>
-                          {!p.matched && (
-                            <span className="text-red-600">
-                              {p.productId ? "sin EAN cargado en Productos" : "no está en el catálogo"}
-                            </span>
-                          )}
+                          {!p.matched && <span className="text-red-600">no está en el catálogo</span>}
                         </li>
                       ))}
                     </ul>
