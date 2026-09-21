@@ -277,12 +277,27 @@ export default function ArmadoPage() {
   // El campo de escaneo NO se limpia acá: cada función lo limpia solo si el
   // escaneo se aceptó, así si se rechaza el operario puede corregir la
   // cantidad y reintentar sin tener que volver a escanear el código.
+  // El QR que Mercado Libre imprime en la etiqueta de un paquete Flex/
+  // Colecta no trae solo el número de "Identificación": el lector devuelve
+  // un texto más largo con esta forma:
+  //   LA,{"id":"47605501166","sender_id":221909209,"hash_code":"...","security_digit":"0"}
+  // El "hash_code" cambia en cada impresión, así que nunca se puede guardar
+  // tal cual en el catálogo — lo único estable es el "id" de adentro, que
+  // es el mismo número que se guarda en shipment_items.label_ean al
+  // importar el envío. Si el escaneo tiene esta forma, se usa ese "id" en
+  // vez del texto completo; si no (por ejemplo, un EAN de un producto de
+  // Full), se usa tal cual vino.
+  function extractLabelCode(rawScan: string): string {
+    const match = rawScan.match(/"id"\s*:\s*"(\d+)"/);
+    return match ? match[1] : rawScan;
+  }
+
   function submitScan() {
     const value = scanValue.trim();
     if (!value) return;
 
     if (!shipmentItemId) {
-      handleLabelScan(value);
+      handleLabelScan(extractLabelCode(value));
     } else {
       handleComponentScan(value);
     }

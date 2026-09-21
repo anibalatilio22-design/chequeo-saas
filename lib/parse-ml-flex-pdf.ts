@@ -74,7 +74,13 @@ function isFurnitureLine(text: string): boolean {
     /^identificaci[oó]n$/i.test(text) ||
     /^productos$/i.test(text) ||
     /despacha tus productos/i.test(text) ||
-    /te est[aá] esperando/i.test(text) ||
+    // El cartel "¡No te relajes! Tu comprador los está esperando." se repite
+    // arriba de cada página y, como cae justo en el límite entre las dos
+    // columnas, a veces se corta a la mitad — por eso se reconoce por
+    // "está esperando" solo, sin exigir que la palabra "te" esté pegada
+    // adelante (si no, algún pedazo suelto como "los está esperando."
+    // se cuela como si fuera un producto más).
+    /est[aá] esperando/i.test(text) ||
     /mercado\s*libre/i.test(text) ||
     /^\d{1,3}$/.test(text) // número de página suelto u otro resto corto sin sentido acá
   );
@@ -137,12 +143,21 @@ async function extractColumns(pdf: any): Promise<{ left: ColumnLine[]; right: Co
     if (items.length === 0) continue;
 
     // El límite entre columnas se saca de dónde está el encabezado
-    // "Productos" en ESTA página (se repite en todas). Si por algún motivo
-    // una página no lo tiene, se usa la mitad del ancho como resguardo.
-    const productosHeader = items.find((it) => /^productos$/i.test(it.text));
+    // "Productos" en ESTA página (se repite en todas). OJO: cada página
+    // también trae, más arriba, el cartel "Despacha tus productos cuanto
+    // antes..." — que contiene la palabra "productos" en minúscula pegada
+    // al margen izquierdo. Si se la buscara sin importar mayúsculas y con
+    // el primer resultado que aparezca, ESA es la que se encuentra primero
+    // (aparece antes en la página), y el límite entre columnas queda
+    // clavado casi en el margen izquierdo — rompiendo la lectura de casi
+    // toda la página. Por eso acá se busca la palabra "Productos" tal cual
+    // (con mayúscula, como título de columna) y, si aun así aparece
+    // más de una vez, nos quedamos con la que está más a la derecha.
+    const productosHeaders = items.filter((it) => it.text === "Productos");
     let splitX: number;
-    if (productosHeader) {
-      splitX = productosHeader.x - 5;
+    if (productosHeaders.length > 0) {
+      const rightmost = productosHeaders.reduce((a, b) => (b.x > a.x ? b : a));
+      splitX = rightmost.x - 5;
     } else {
       const viewport = page.getViewport({ scale: 1 });
       splitX = viewport.width / 2;
@@ -205,11 +220,16 @@ function parseIdentificaciones(lines: ColumnLine[]): IdentificacionEntry[] {
       i++;
     }
 
-    let buyerName = "";
-    if (lines[i] && !ID_LINE.test(lines[i].text) && !isFurnitureLine(lines[i].text)) {
-      buyerName = lines[i].text;
+    // El nombre del comprador a veces no entra en una sola línea (nombre y
+    // apellido largos) y sigue en la línea de abajo — se junta todo lo que
+    // venga hasta la próxima "Identificación" (un número) o hasta el
+    // próximo cartel de relleno.
+    const buyerParts: string[] = [];
+    while (lines[i] && !ID_LINE.test(lines[i].text) && !isFurnitureLine(lines[i].text)) {
+      buyerParts.push(lines[i].text);
       i++;
     }
+    const buyerName = buyerParts.join(" ");
 
     out.push({ itemId, packId, venta, buyerName, order });
   }
@@ -234,9 +254,24 @@ function parseProductos(lines: ColumnLine[]): ProductoEntry[] {
       continue;
     }
 
-    const name = line;
+    // El nombre del producto a veces es tan largo que no entra en una sola
+    // línea de la columna y sigue en la de abajo — se junta todo lo que
+    // venga hasta encontrar la línea de SKU/Cantidad/algún atributo, o un
+    // cartel de relleno.
+    const nameParts = [line];
     const order = lines[i].order;
     i++;
+    while (
+      lines[i] &&
+      !SKU_LINE.test(lines[i].text) &&
+      !CANTIDAD_LINE.test(lines[i].text) &&
+      !LABEL_LINE.test(lines[i].text) &&
+      !isFurnitureLine(lines[i].text)
+    ) {
+      nameParts.push(lines[i].text);
+      i++;
+    }
+    const name = nameParts.join(" ");
 
     let sku: string | null = null;
     if (lines[i] && SKU_LINE.test(lines[i].text)) {
