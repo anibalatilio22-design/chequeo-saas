@@ -73,7 +73,19 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, ...parsed });
+    // Diagnóstico temporal: mandamos también el texto crudo de cada columna
+    // tal cual lo vio el parser en ESTE servidor (no una simulación aparte),
+    // incluso cuando el import salió bien — así se puede comparar lo que de
+    // verdad extrae la librería de PDF en producción contra lo esperado,
+    // en vez de adivinar. No se usa para nada del import en sí.
+    let debugColumns: { identificacion: string[]; productos: string[] } | null = null;
+    try {
+      debugColumns = await debugFlexPdfColumns(pdf);
+    } catch {
+      // si no se puede sacar el diagnóstico, seguimos sin él
+    }
+
+    return NextResponse.json({ ok: true, ...parsed, debugColumns });
   } catch (err) {
     return NextResponse.json({ ok: false, error: debugInfo("parseMercadoLibreFlexPdf", err) }, { status: 500 });
   }

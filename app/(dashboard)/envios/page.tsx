@@ -68,6 +68,14 @@ export default function EnviosPage() {
   const [flexParseError, setFlexParseError] = useState<string | null>(null);
   const [flexWarnings, setFlexWarnings] = useState<string[]>([]);
   const [flexPacks, setFlexPacks] = useState<PreviewFlexPack[]>([]);
+  // Diagnóstico técnico TEMPORAL: el texto crudo de cada columna tal cual lo
+  // extrae el servidor real (no una simulación aparte), para investigar por
+  // qué a veces el import empareja mal una venta con el producto de otra.
+  // Se descarga como archivo de texto con el botón de abajo — no se usa para
+  // nada del import en sí, es solo para mandarlo cuando algo no cierra.
+  const [flexDebugColumns, setFlexDebugColumns] = useState<{ identificacion: string[]; productos: string[] } | null>(
+    null
+  );
   const [flexShipmentCode, setFlexShipmentCode] = useState("");
   // Ya no se elige (Flex y Colecta se unificaron, ver más abajo) — queda
   // fijo en "flex" para toda importación de este tipo de documento.
@@ -322,6 +330,7 @@ export default function EnviosPage() {
     setFlexImportResult(null);
     setFlexWarnings([]);
     setFlexPacks([]);
+    setFlexDebugColumns(null);
 
     const file = e.target.files?.[0];
     if (!file) return;
@@ -338,6 +347,8 @@ export default function EnviosPage() {
     try {
       const res = await fetch("/api/import/mercadolibre-flex-pdf", { method: "POST", body: formData });
       const data = await res.json();
+
+      setFlexDebugColumns(data.debugColumns ?? null);
 
       if (!data.ok) {
         setFlexParseError(data.error ?? "No se pudo leer el PDF");
@@ -375,6 +386,30 @@ export default function EnviosPage() {
     }
 
     setFlexParsing(false);
+  }
+
+  // Diagnóstico técnico TEMPORAL (ver comentario del estado más arriba):
+  // arma un archivo de texto simple con las dos columnas tal cual las leyó
+  // el servidor real, para poder mandarlo cuando algo no cierra en el
+  // emparejamiento de una venta con su producto.
+  function downloadFlexDebugColumns() {
+    if (!flexDebugColumns) return;
+    const lines: string[] = [];
+    lines.push("=== Columna IDENTIFICACIÓN (tal cual la leyó el servidor) ===");
+    flexDebugColumns.identificacion.forEach((l, i) => lines.push(`${i}: ${l}`));
+    lines.push("");
+    lines.push("=== Columna PRODUCTOS (tal cual la leyó el servidor) ===");
+    flexDebugColumns.productos.forEach((l, i) => lines.push(`${i}: ${l}`));
+
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `diagnostico-flex-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   async function handleConfirmFlexImport() {
@@ -850,6 +885,19 @@ export default function EnviosPage() {
 
           {flexParsing && <p className="text-sm text-neutral-500">Leyendo el PDF...</p>}
           {flexParseError && <p className="text-sm text-red-600">{flexParseError}</p>}
+
+          {/* Botón temporal de diagnóstico técnico — ver comentario en el
+              estado flexDebugColumns más arriba en el archivo. Sacar cuando
+              se termine de investigar el emparejamiento venta/producto. */}
+          {flexDebugColumns && (
+            <button
+              type="button"
+              onClick={downloadFlexDebugColumns}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600 hover:bg-gray-50"
+            >
+              Descargar diagnóstico técnico (para soporte)
+            </button>
+          )}
 
           {flexWarnings.length > 0 && (
             <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800">
