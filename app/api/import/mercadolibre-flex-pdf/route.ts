@@ -55,7 +55,7 @@ export async function POST(request: Request) {
       // el parser, para poder ver rápido en la pantalla por qué no entró
       // nada (sin tener que andar mirando logs de Vercel) — la misma idea
       // que terminó funcionando para destrabar el de Full.
-      let debugColumns: { identificacion: string[]; productos: string[] } | null = null;
+      let debugColumns: Awaited<ReturnType<typeof debugFlexPdfColumns>> | null = null;
       try {
         debugColumns = await debugFlexPdfColumns(pdf);
       } catch {
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     // incluso cuando el import salió bien — así se puede comparar lo que de
     // verdad extrae la librería de PDF en producción contra lo esperado,
     // en vez de adivinar. No se usa para nada del import en sí.
-    let debugColumns: { identificacion: string[]; productos: string[] } | null = null;
+    let debugColumns: Awaited<ReturnType<typeof debugFlexPdfColumns>> | null = null;
     try {
       debugColumns = await debugFlexPdfColumns(pdf);
     } catch {

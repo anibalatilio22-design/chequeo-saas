@@ -368,10 +368,18 @@ export async function parseMercadoLibreFlexPdf(pdf: any): Promise<ParsedFlexPdf>
 // cualquier regla. Sirve para mandarlo cuando algo no entra bien con un PDF
 // real, en vez de adivinar a ciegas (la misma estrategia que terminó
 // funcionando con el de Full).
-export async function debugFlexPdfColumns(pdf: any): Promise<{ identificacion: string[]; productos: string[] }> {
+//
+// Se incluye también el "order" numérico de cada línea (el mismo valor que
+// usa el emparejamiento venta/producto para decidir qué producto le
+// corresponde a qué venta) — el texto solo no alcanza para ver POR QUÉ el
+// emparejamiento eligió mal: hace falta poder comparar los números en sí
+// entre las dos columnas.
+export async function debugFlexPdfColumns(
+  pdf: any
+): Promise<{ identificacion: { text: string; order: number }[]; productos: { text: string; order: number }[] }> {
   const { left, right } = await extractColumns(pdf);
   return {
-    identificacion: left.map((l) => l.text),
-    productos: right.map((l) => l.text),
+    identificacion: left.map((l) => ({ text: l.text, order: l.order })),
+    productos: right.map((l) => ({ text: l.text, order: l.order })),
   };
 }

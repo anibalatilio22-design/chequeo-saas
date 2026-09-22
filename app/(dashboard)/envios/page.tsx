@@ -73,9 +73,11 @@ export default function EnviosPage() {
   // qué a veces el import empareja mal una venta con el producto de otra.
   // Se descarga como archivo de texto con el botón de abajo — no se usa para
   // nada del import en sí, es solo para mandarlo cuando algo no cierra.
-  const [flexDebugColumns, setFlexDebugColumns] = useState<{ identificacion: string[]; productos: string[] } | null>(
-    null
-  );
+  type FlexDebugLine = { text: string; order: number };
+  const [flexDebugColumns, setFlexDebugColumns] = useState<{
+    identificacion: FlexDebugLine[];
+    productos: FlexDebugLine[];
+  } | null>(null);
   const [flexShipmentCode, setFlexShipmentCode] = useState("");
   // Ya no se elige (Flex y Colecta se unificaron, ver más abajo) — queda
   // fijo en "flex" para toda importación de este tipo de documento.
@@ -396,10 +398,10 @@ export default function EnviosPage() {
     if (!flexDebugColumns) return;
     const lines: string[] = [];
     lines.push("=== Columna IDENTIFICACIÓN (tal cual la leyó el servidor) ===");
-    flexDebugColumns.identificacion.forEach((l, i) => lines.push(`${i}: ${l}`));
+    flexDebugColumns.identificacion.forEach((l, i) => lines.push(`${i} [order=${l.order}]: ${l.text}`));
     lines.push("");
     lines.push("=== Columna PRODUCTOS (tal cual la leyó el servidor) ===");
-    flexDebugColumns.productos.forEach((l, i) => lines.push(`${i}: ${l}`));
+    flexDebugColumns.productos.forEach((l, i) => lines.push(`${i} [order=${l.order}]: ${l.text}`));
 
     const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
