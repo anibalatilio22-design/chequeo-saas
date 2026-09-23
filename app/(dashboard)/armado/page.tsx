@@ -645,12 +645,15 @@ export default function ArmadoPage() {
 
         {/* Historial de escaneos, abajo de todo (no entre el campo de
             escaneo y la receta, para no empujarla hacia abajo y que quede
-            incómoda). Fijo hasta que se acumulen más, a diferencia del
-            feedback grande de arriba, que se borra solo. Más reciente
+            incómoda). El panel queda SIEMPRE visible, no solo cuando ya hay
+            algo escaneado — así no aparece/desaparece ni mueve el resto de
+            la pantalla, se va actualizando en el mismo lugar. Más reciente
             arriba, verde los aprobados y rojo los rechazados. */}
-        {scanHistory.length > 0 && (
-          <div className="rounded-md border border-gray-200 bg-neutral-50 p-3">
-            <p className="mb-2 text-xs font-medium text-neutral-500">Últimos eventos</p>
+        <div className="rounded-md border border-gray-200 bg-neutral-50 p-3">
+          <p className="mb-2 text-xs font-medium text-neutral-500">Últimos eventos</p>
+          {scanHistory.length === 0 ? (
+            <p className="text-sm text-neutral-400">Todavía no se escaneó nada.</p>
+          ) : (
             <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
               {scanHistory.map((ev, i) => (
                 <li
@@ -665,8 +668,8 @@ export default function ArmadoPage() {
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Modal de confirmación: nombre + PIN de operario */}
