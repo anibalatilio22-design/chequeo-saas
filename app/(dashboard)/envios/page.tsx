@@ -182,6 +182,20 @@ export default function EnviosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Refresco automático del resumen de pedidos (Pendientes/Armados/Total):
+  // mientras alguien tiene esta pantalla abierta, otra persona puede estar
+  // armando pedidos en Armado al mismo tiempo — sin esto, los números
+  // quedarían congelados con los de cuando se entró a la página. Solo
+  // vuelve a traer envíos e items, no toca nada de lo que se esté
+  // completando en los formularios de import de acá abajo.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadShipments();
+    }, 20000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Normaliza EAN/SKU antes de comparar: mayúsculas y sin espacios de más,
   // así una diferencia de mayúsculas/minúsculas o un espacio de sobra al
   // cargar el producto no hace fallar la comparación exacta.
@@ -645,9 +659,38 @@ export default function EnviosPage() {
   const recetaDesactivadaCount = rows.filter((r) => !r.recipeId && diagnoseRow(r) === "receta-desactivada").length;
   const conProductoSinRecetaCount = sinRecetaCount - sinProductoCount - recetaDesactivadaCount;
 
+  // Contador de pedidos a preparar: suma los items (cada línea/paquete a
+  // armar, tanto de Full como de Flex/Colecta) de los envíos ABIERTOS
+  // nada más — un envío cerrado ya se considera terminado y no cuenta acá.
+  // Se arma con los mismos datos que ya se traen para mostrar el detalle de
+  // cada envío más abajo (itemsByShipment), no hace falta pedirle nada
+  // nuevo a la base.
+  const openShipmentItems = shipments
+    .filter((s) => s.status === "open")
+    .flatMap((s) => itemsByShipment[s.id] ?? []);
+  const pedidosArmados = openShipmentItems.filter((it) => it.quantity_completed >= it.quantity_required).length;
+  const pedidosTotal = openShipmentItems.length;
+  const pedidosPendientes = pedidosTotal - pedidosArmados;
+
   return (
     <main className="mx-auto max-w-5xl space-y-10 p-6">
       <h1 className="text-xl font-semibold">Envío</h1>
+
+      {/* Resumen de pedidos a preparar, de todos los envíos abiertos juntos. */}
+      <section className="grid grid-cols-3 gap-3">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+          <p className="text-2xl font-semibold text-amber-700">{pedidosPendientes}</p>
+          <p className="text-sm text-amber-700">Pendientes</p>
+        </div>
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
+          <p className="text-2xl font-semibold text-green-700">{pedidosArmados}</p>
+          <p className="text-sm text-green-700">Armados</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
+          <p className="text-2xl font-semibold text-neutral-700">{pedidosTotal}</p>
+          <p className="text-sm text-neutral-600">Total pedidos</p>
+        </div>
+      </section>
 
       {isAdmin && (
         <section className="space-y-4 rounded-lg border border-gray-200 p-4">
