@@ -325,10 +325,26 @@ export async function parseMercadoLibreFlexPdf(pdf: any): Promise<ParsedFlexPdf>
   // hacia abajo. Así se banca que una misma venta traiga más de un
   // producto: todos los productos que caen antes de la SIGUIENTE
   // identificación quedan agrupados en la anterior.
+  //
+  // ROW_ALIGN_TOLERANCE — encontrado probando contra un PDF real: el número
+  // de venta (columna Identificación) de una fila queda, en la posición que
+  // reporta la librería de PDF, un pelín MÁS ABAJO que el nombre del
+  // producto de esa misma fila (una diferencia de bien menos de 1 punto,
+  // siempre en el mismo sentido — parece un efecto de cómo se renderiza la
+  // negrita del número de venta contra el texto normal del producto, no un
+  // error de lectura). Sin margen, esa diferencia bastaba para que CADA
+  // producto quedara asignado a la venta ANTERIOR en vez de la suya — todo
+  // el documento se corría una fila. El margen de acá es generoso a
+  // propósito (varias veces más grande que esa diferencia real) pero sigue
+  // siendo mucho más chico que la distancia entre dos ventas distintas
+  // (nunca menos de ~10 puntos en los PDF reales vistos hasta ahora), así
+  // que no debería juntar dos ventas que en realidad son distintas.
+  const ROW_ALIGN_TOLERANCE = 3;
+
   for (const prod of productos) {
     let targetIndex = -1;
     for (let i = identificaciones.length - 1; i >= 0; i--) {
-      if (identificaciones[i].order <= prod.order) {
+      if (identificaciones[i].order <= prod.order + ROW_ALIGN_TOLERANCE) {
         targetIndex = i;
         break;
       }
