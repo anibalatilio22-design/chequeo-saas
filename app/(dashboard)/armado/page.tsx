@@ -55,6 +55,12 @@ export default function ArmadoPage() {
   // ningún lado — por eso se resetea junto con el resto de la receta.
   const [checkMode, setCheckMode] = useState<"unidad" | "item">("unidad");
 
+  // Último código leído por el lector (etiqueta o componente), para
+  // mostrarlo fijo justo abajo del campo de escaneo — a diferencia de
+  // "feedback" (el cartel grande de arriba), que se borra solo a los pocos
+  // segundos, este queda a la vista hasta el próximo escaneo.
+  const [lastScan, setLastScan] = useState<{ code: string; ok: boolean } | null>(null);
+
   // Modal de confirmación
   const [showConfirm, setShowConfirm] = useState(false);
   const [operators, setOperators] = useState<Operator[]>([]);
@@ -181,6 +187,7 @@ export default function ArmadoPage() {
 
     if (!itemData || !recipeData || !recipeData.active) {
       setLoading(false);
+      setLastScan({ code: ean, ok: false });
       showFeedback("error", `Etiqueta ${ean} no corresponde a ningún producto de este envío`);
       scanInputRef.current?.select();
       return;
@@ -204,6 +211,7 @@ export default function ArmadoPage() {
 
     setLoading(false);
     setScanValue("");
+    setLastScan({ code: ean, ok: true });
     showFeedback("ok", `Receta: ${recipeData.name}`);
   }
 
@@ -215,6 +223,7 @@ export default function ArmadoPage() {
     );
 
     if (idx === -1) {
+      setLastScan({ code, ok: false });
       showFeedback("error", `Producto ${code} no pertenece a esta receta`);
       setScannedLog((log) => [
         ...log,
@@ -228,6 +237,7 @@ export default function ArmadoPage() {
     const comp = components[idx];
 
     if (comp.scannedCount >= comp.quantity) {
+      setLastScan({ code, ok: false });
       showFeedback("error", `Ya escaneaste todas las unidades de ${comp.product_name}`);
       setBulkQuantity("1");
       scanInputRef.current?.select();
@@ -242,6 +252,7 @@ export default function ArmadoPage() {
     const remaining = comp.quantity - comp.scannedCount;
 
     if (requested > remaining) {
+      setLastScan({ code, ok: false });
       showFeedback(
         "error",
         `Pusiste ${requested} pero solo falta${remaining === 1 ? "" : "n"} ${remaining} de ${comp.product_name}. Corregí la cantidad.`
@@ -265,6 +276,7 @@ export default function ArmadoPage() {
     ]);
 
     const newCount = comp.scannedCount + requested;
+    setLastScan({ code, ok: true });
     showFeedback("ok", `${comp.product_name} (${newCount}/${comp.quantity})`);
     setBulkQuantity("1");
     setScanValue("");
@@ -496,6 +508,17 @@ export default function ArmadoPage() {
           <p className="text-xs text-neutral-400">
             Si varias unidades son del mismo producto, poné la cantidad ahí al lado y escaneá una
             sola vez.
+          </p>
+        )}
+
+        {/* Último código leído, fijo hasta el próximo escaneo (a diferencia
+            del feedback grande de abajo, que se borra solo). */}
+        {lastScan && (
+          <p
+            className={`text-sm font-medium ${lastScan.ok ? "text-green-700" : "text-red-600"}`}
+          >
+            Último leído: <span className="font-mono">{lastScan.code}</span>{" "}
+            {lastScan.ok ? "✓ aprobado" : "✗ rechazado"}
           </p>
         )}
 
