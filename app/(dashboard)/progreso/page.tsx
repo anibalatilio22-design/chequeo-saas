@@ -78,6 +78,16 @@ export default function ProgresoPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [completionsByItem, setCompletionsByItem] = useState<Record<string, CompletionRow[]>>({});
 
+  // Items de TODOS los envíos (no solo el elegido arriba) — hace falta para
+  // poder armar el resumen de "Pendientes/Armados/Total" de Full y de
+  // Flex/Colecta juntos, sin importar cuál esté seleccionado en este momento.
+  const [itemsByShipment, setItemsByShipment] = useState<Record<string, ShipmentProgress[]>>({});
+
+  async function loadShipmentItems(id: string) {
+    const { data } = await supabase.from("shipment_progress").select("*").eq("shipment_id", id);
+    setItemsByShipment((prev) => ({ ...prev, [id]: (data ?? []) as ShipmentProgress[] }));
+  }
+
   const [generatingRemito, setGeneratingRemito] = useState(false);
   const [remitoError, setRemitoError] = useState<string | null>(null);
 
@@ -122,6 +132,9 @@ export default function ProgresoPage() {
       .select("*")
       .order("created_at", { ascending: false });
     setShipments(data ?? []);
+    // Para el resumen de Pendientes/Armados/Total de Full y Flex/Colecta,
+    // que se muestra siempre arriba de todo, sin importar el envío elegido.
+    ((data ?? []) as { id: string }[]).forEach((s) => loadShipmentItems(s.id));
   }
 
   async function loadProgress(id: string) {
@@ -158,6 +171,18 @@ export default function ProgresoPage() {
   useEffect(() => {
     loadCompany();
     loadShipments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Refresco automático del resumen de pedidos (Pendientes/Armados/Total):
+  // mientras alguien tiene esta pantalla abierta, en Armado puede estar
+  // completándose otro pedido al mismo tiempo — sin esto, los números
+  // quedarían congelados con los de cuando se entró a la página.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadShipments();
+    }, 20000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -426,9 +451,51 @@ export default function ProgresoPage() {
     setGeneratingRemito(false);
   }
 
+  // Resumen de pedidos a preparar, separado por Full y Flex/Colecta — cuenta
+  // los items (cada línea/paquete a armar) de los envíos ABIERTOS nada más,
+  // sin importar cuál esté elegido arriba en el selector.
+  function pedidosStatsFor(types: Array<(typeof shipments)[number]["type"]>) {
+    const items = shipments
+      .filter((s) => s.status === "open" && types.includes(s.type))
+      .flatMap((s) => itemsByShipment[s.id] ?? []);
+    const armados = items.filter((it) => it.quantity_completed >= it.quantity_required).length;
+    const total = items.length;
+    return { pendientes: total - armados, armados, total };
+  }
+  const pedidosFull = pedidosStatsFor(["full"]);
+  const pedidosFlexColecta = pedidosStatsFor(["flex", "colecta"]);
+
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
       <h1 className="text-xl font-semibold">Progreso</h1>
+
+      {/* Resumen de pedidos a preparar, separado por Full y Flex/Colecta. */}
+      <section className="space-y-3">
+        {(
+          [
+            { label: "Full", stats: pedidosFull },
+            { label: "Flex / Colecta", stats: pedidosFlexColecta },
+          ] as const
+        ).map(({ label, stats }) => (
+          <div key={label} className="rounded-lg border border-gray-200 p-3">
+            <p className="mb-2 text-sm font-medium text-neutral-600">{label}</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+                <p className="text-2xl font-semibold text-amber-700">{stats.pendientes}</p>
+                <p className="text-sm text-amber-700">Pendientes</p>
+              </div>
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
+                <p className="text-2xl font-semibold text-green-700">{stats.armados}</p>
+                <p className="text-sm text-green-700">Armados</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
+                <p className="text-2xl font-semibold text-neutral-700">{stats.total}</p>
+                <p className="text-sm text-neutral-600">Total pedidos</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
 
       <div className="space-y-1">
         <label className="text-sm text-neutral-500">Tipo de envío</label>

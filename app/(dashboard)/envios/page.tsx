@@ -659,56 +659,9 @@ export default function EnviosPage() {
   const recetaDesactivadaCount = rows.filter((r) => !r.recipeId && diagnoseRow(r) === "receta-desactivada").length;
   const conProductoSinRecetaCount = sinRecetaCount - sinProductoCount - recetaDesactivadaCount;
 
-  // Contador de pedidos a preparar: suma los items (cada línea/paquete a
-  // armar, tanto de Full como de Flex/Colecta) de los envíos ABIERTOS
-  // nada más — un envío cerrado ya se considera terminado y no cuenta acá.
-  // Se arma con los mismos datos que ya se traen para mostrar el detalle de
-  // cada envío más abajo (itemsByShipment), no hace falta pedirle nada
-  // nuevo a la base. Separado por Full y Flex/Colecta (igual que en Armado,
-  // donde Flex y Colecta ya se manejan juntos) en vez de un total mezclado,
-  // para que se vea de un vistazo cuánto falta de cada uno.
-  function pedidosStatsFor(types: Array<(typeof shipments)[number]["type"]>) {
-    const items = shipments
-      .filter((s) => s.status === "open" && types.includes(s.type))
-      .flatMap((s) => itemsByShipment[s.id] ?? []);
-    const armados = items.filter((it) => it.quantity_completed >= it.quantity_required).length;
-    const total = items.length;
-    return { pendientes: total - armados, armados, total };
-  }
-  const pedidosFull = pedidosStatsFor(["full"]);
-  const pedidosFlexColecta = pedidosStatsFor(["flex", "colecta"]);
-
   return (
     <main className="mx-auto max-w-5xl space-y-10 p-6">
       <h1 className="text-xl font-semibold">Envío</h1>
-
-      {/* Resumen de pedidos a preparar, separado por Full y Flex/Colecta. */}
-      <section className="space-y-3">
-        {(
-          [
-            { label: "Full", stats: pedidosFull },
-            { label: "Flex / Colecta", stats: pedidosFlexColecta },
-          ] as const
-        ).map(({ label, stats }) => (
-          <div key={label} className="rounded-lg border border-gray-200 p-3">
-            <p className="mb-2 text-sm font-medium text-neutral-600">{label}</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
-                <p className="text-2xl font-semibold text-amber-700">{stats.pendientes}</p>
-                <p className="text-sm text-amber-700">Pendientes</p>
-              </div>
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
-                <p className="text-2xl font-semibold text-green-700">{stats.armados}</p>
-                <p className="text-sm text-green-700">Armados</p>
-              </div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
-                <p className="text-2xl font-semibold text-neutral-700">{stats.total}</p>
-                <p className="text-sm text-neutral-600">Total pedidos</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </section>
 
       {isAdmin && (
         <section className="space-y-4 rounded-lg border border-gray-200 p-4">
