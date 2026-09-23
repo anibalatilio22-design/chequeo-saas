@@ -464,38 +464,13 @@ export default function ProgresoPage() {
   }
   const pedidosFull = pedidosStatsFor(["full"]);
   const pedidosFlexColecta = pedidosStatsFor(["flex", "colecta"]);
+  // El resumen que se muestra depende de qué tipo está elegido arriba, para
+  // que quede adentro de esa misma sección en vez de mostrar los dos juntos.
+  const pedidosDelTipoElegido = shipmentType === "full" ? pedidosFull : pedidosFlexColecta;
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
       <h1 className="text-xl font-semibold">Progreso</h1>
-
-      {/* Resumen de pedidos a preparar, separado por Full y Flex/Colecta. */}
-      <section className="space-y-3">
-        {(
-          [
-            { label: "Full", stats: pedidosFull },
-            { label: "Flex / Colecta", stats: pedidosFlexColecta },
-          ] as const
-        ).map(({ label, stats }) => (
-          <div key={label} className="rounded-lg border border-gray-200 p-3">
-            <p className="mb-2 text-sm font-medium text-neutral-600">{label}</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
-                <p className="text-2xl font-semibold text-amber-700">{stats.pendientes}</p>
-                <p className="text-sm text-amber-700">Pendientes</p>
-              </div>
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
-                <p className="text-2xl font-semibold text-green-700">{stats.armados}</p>
-                <p className="text-sm text-green-700">Armados</p>
-              </div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
-                <p className="text-2xl font-semibold text-neutral-700">{stats.total}</p>
-                <p className="text-sm text-neutral-600">Total pedidos</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </section>
 
       <div className="space-y-1">
         <label className="text-sm text-neutral-500">Tipo de envío</label>
@@ -517,6 +492,23 @@ export default function ProgresoPage() {
               {t === "flex" ? "Flex / Colecta" : "Full"}
             </button>
           ))}
+        </div>
+
+        {/* Resumen de pedidos a preparar de ESTE tipo, adentro de esta misma
+            sección — cambia junto con el botón de arriba. */}
+        <div className="grid grid-cols-3 gap-3 pt-1">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+            <p className="text-2xl font-semibold text-amber-700">{pedidosDelTipoElegido.pendientes}</p>
+            <p className="text-sm text-amber-700">Pendientes</p>
+          </div>
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
+            <p className="text-2xl font-semibold text-green-700">{pedidosDelTipoElegido.armados}</p>
+            <p className="text-sm text-green-700">Armados</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
+            <p className="text-2xl font-semibold text-neutral-700">{pedidosDelTipoElegido.total}</p>
+            <p className="text-sm text-neutral-600">Total pedidos</p>
+          </div>
         </div>
 
         {matchingShipments.length === 0 && (

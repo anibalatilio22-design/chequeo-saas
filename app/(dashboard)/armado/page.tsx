@@ -531,29 +531,6 @@ export default function ArmadoPage() {
           </p>
         )}
 
-        {/* Historial de escaneos, fijo hasta que se acumulen más (a
-            diferencia del feedback grande de abajo, que se borra solo).
-            Más reciente arriba, verde los aprobados y rojo los rechazados. */}
-        {scanHistory.length > 0 && (
-          <div className="rounded-md border border-gray-200 bg-neutral-50 p-3">
-            <p className="mb-2 text-xs font-medium text-neutral-500">Últimos eventos</p>
-            <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
-              {scanHistory.map((ev, i) => (
-                <li
-                  key={i}
-                  className={`flex flex-wrap items-baseline gap-x-2 ${
-                    ev.ok ? "text-green-700" : "text-red-600"
-                  }`}
-                >
-                  <span className="text-xs text-neutral-400">{ev.time}</span>
-                  <span>{ev.message}</span>
-                  <span className="text-xs text-neutral-400">· {ev.puesto}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
         {/* Feedback visual grande */}
         {feedback && (
           <div
@@ -660,6 +637,31 @@ export default function ArmadoPage() {
                   <span>
                     {c.scannedCount}/{c.quantity}
                   </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Historial de escaneos, abajo de todo (no entre el campo de
+            escaneo y la receta, para no empujarla hacia abajo y que quede
+            incómoda). Fijo hasta que se acumulen más, a diferencia del
+            feedback grande de arriba, que se borra solo. Más reciente
+            arriba, verde los aprobados y rojo los rechazados. */}
+        {scanHistory.length > 0 && (
+          <div className="rounded-md border border-gray-200 bg-neutral-50 p-3">
+            <p className="mb-2 text-xs font-medium text-neutral-500">Últimos eventos</p>
+            <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
+              {scanHistory.map((ev, i) => (
+                <li
+                  key={i}
+                  className={`flex flex-wrap items-baseline gap-x-2 ${
+                    ev.ok ? "text-green-700" : "text-red-600"
+                  }`}
+                >
+                  <span className="text-xs text-neutral-400">{ev.time}</span>
+                  <span>{ev.message}</span>
+                  <span className="text-xs text-neutral-400">· {ev.puesto}</span>
                 </li>
               ))}
             </ul>
