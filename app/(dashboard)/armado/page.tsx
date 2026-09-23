@@ -48,6 +48,13 @@ export default function ArmadoPage() {
   // en vez de escanear una por una.
   const [bulkQuantity, setBulkQuantity] = useState("1");
 
+  // Forma de chequeo para Full: "unidad" (como siempre, hay que repetir todo
+  // el ciclo por cada unidad) o "item" (se escanean los componentes una sola
+  // vez y al confirmar se completan de golpe todas las unidades que falten
+  // de ese ítem). Se elige por etiqueta escaneada, no queda guardado en
+  // ningún lado — por eso se resetea junto con el resto de la receta.
+  const [checkMode, setCheckMode] = useState<"unidad" | "item">("unidad");
+
   // Modal de confirmación
   const [showConfirm, setShowConfirm] = useState(false);
   const [operators, setOperators] = useState<Operator[]>([]);
@@ -118,6 +125,7 @@ export default function ArmadoPage() {
     setScannedLog([]);
     setRequired(0);
     setCompleted(0);
+    setCheckMode("unidad");
   }
 
   async function loadProgress(itemId: string) {
@@ -342,10 +350,19 @@ export default function ArmadoPage() {
       data: { user },
     } = await supabase.auth.getUser();
 
+    // Modo "por ítem" (solo Full): en vez de anotar 1 sola unidad completada,
+    // se anotan de golpe todas las que le falten a este ítem para llegar
+    // justo a la cantidad requerida (si ya tenía algo cargado antes en modo
+    // "por unidad", completa nada más lo que falta — nunca se pasa del
+    // total). La vista "shipment_progress" solo cuenta filas de esta tabla,
+    // así que no hace falta ninguna migración: alcanza con insertar varias.
+    const isItemMode = shipmentType === "full" && checkMode === "item";
+    const unitsToConfirm = isItemMode ? Math.max(required - completed, 1) : 1;
+
     // El cliente tipado a veces no logra resolver el tipo de "insert" para
     // esta tabla (mismo motivo de fondo que los otros casteos de este
     // archivo), así que forzamos el tipo del objeto a mano acá.
-    const { error: insertError } = await supabase.from("completions").insert({
+    const baseCompletion = {
       company_id: recipe!.company_id,
       shipment_item_id: shipmentItemId!,
       recipe_id: recipe!.id,
@@ -353,7 +370,10 @@ export default function ArmadoPage() {
       user_id: user?.id ?? null,
       workstation_id: null, // TODO: configurar puesto de trabajo por PC
       scanned_components: scannedLog,
-    } as any);
+    };
+    const rowsToInsert = Array.from({ length: unitsToConfirm }, () => ({ ...baseCompletion }));
+
+    const { error: insertError } = await supabase.from("completions").insert(rowsToInsert as any);
 
     setLoading(false);
 
@@ -503,6 +523,40 @@ export default function ArmadoPage() {
               </span>
             </div>
 
+            {/* Forma de chequeo — solo tiene sentido para Full: en Flex/Colecta
+                cada paquete es 1 unidad, no hay "etiqueta de 100" que armar. */}
+            {shipmentType === "full" && (
+              <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-3">
+                <label className="text-sm text-neutral-500">Forma de chequeo</label>
+                <div className="flex gap-2">
+                  {(
+                    [
+                      { value: "unidad", label: "Por unidad" },
+                      { value: "item", label: "Por ítem" },
+                    ] as { value: "unidad" | "item"; label: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setCheckMode(opt.value)}
+                      className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
+                        checkMode === opt.value
+                          ? "border-yellow-500 bg-yellow-100 text-neutral-900"
+                          : "border-gray-300 bg-white text-neutral-600"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-neutral-400">
+                  {checkMode === "item"
+                    ? "Escaneás los componentes una sola vez y al confirmar se completan de golpe todas las unidades que le falten a este ítem."
+                    : "Repetís el escaneo completo por cada unidad, como siempre."}
+                </p>
+              </div>
+            )}
+
             <ul className="space-y-1">
               {components.map((c) => (
                 <li
@@ -566,6 +620,13 @@ export default function ArmadoPage() {
             <p className="text-sm text-neutral-500">
               Se completaron todos los componentes de &quot;{recipe?.name}&quot;.
             </p>
+
+            {shipmentType === "full" && checkMode === "item" && (
+              <p className="rounded-md bg-amber-50 p-2 text-sm font-medium text-amber-700">
+                Se van a confirmar {Math.max(required - completed, 1)} unidades de este ítem de
+                una sola vez.
+              </p>
+            )}
 
             <div className="space-y-1">
               <label className="text-sm text-neutral-500">Operario</label>
