@@ -55,11 +55,28 @@ export default function ArmadoPage() {
   // ningún lado — por eso se resetea junto con el resto de la receta.
   const [checkMode, setCheckMode] = useState<"unidad" | "item">("unidad");
 
-  // Último código leído por el lector (etiqueta o componente), para
-  // mostrarlo fijo justo abajo del campo de escaneo — a diferencia de
-  // "feedback" (el cartel grande de arriba), que se borra solo a los pocos
-  // segundos, este queda a la vista hasta el próximo escaneo.
-  const [lastScan, setLastScan] = useState<{ code: string; ok: boolean } | null>(null);
+  // Historial de escaneos (etiqueta o componente), para mostrarlo fijo justo
+  // abajo del campo de escaneo — a diferencia de "feedback" (el cartel
+  // grande de arriba), que se borra solo a los pocos segundos, este queda a
+  // la vista con los últimos eventos, más reciente primero. Se guarda solo
+  // en memoria (no en la base), se pierde al recargar la página.
+  const [scanHistory, setScanHistory] = useState<
+    { time: string; message: string; ok: boolean; puesto: string }[]
+  >([]);
+
+  // Nombre del puesto de trabajo configurado en esta PC (Configuración lo
+  // guarda en localStorage, ver WORKSTATION_STORAGE_KEY en config/page.tsx)
+  // — se muestra en cada línea del historial nada más, no se guarda en la
+  // base todavía (ver el TODO de workstation_id más abajo).
+  function currentWorkstationName(): string {
+    if (typeof window === "undefined") return "Sin puesto";
+    return localStorage.getItem("chequeo_puesto_trabajo")?.trim() || "Sin puesto";
+  }
+
+  function logScanEvent(message: string, ok: boolean) {
+    const time = new Date().toLocaleTimeString("es-AR");
+    setScanHistory((log) => [{ time, message, ok, puesto: currentWorkstationName() }, ...log].slice(0, 20));
+  }
 
   // Modal de confirmación
   const [showConfirm, setShowConfirm] = useState(false);
@@ -187,7 +204,7 @@ export default function ArmadoPage() {
 
     if (!itemData || !recipeData || !recipeData.active) {
       setLoading(false);
-      setLastScan({ code: ean, ok: false });
+      logScanEvent(`Código "${ean}" no corresponde a ningún producto de este envío.`, false);
       showFeedback("error", `Etiqueta ${ean} no corresponde a ningún producto de este envío`);
       scanInputRef.current?.select();
       return;
@@ -211,7 +228,7 @@ export default function ArmadoPage() {
 
     setLoading(false);
     setScanValue("");
-    setLastScan({ code: ean, ok: true });
+    logScanEvent(`Etiqueta "${ean}" — inicia armado: "${recipeData.name}".`, true);
     showFeedback("ok", `Receta: ${recipeData.name}`);
   }
 
@@ -223,7 +240,7 @@ export default function ArmadoPage() {
     );
 
     if (idx === -1) {
-      setLastScan({ code, ok: false });
+      logScanEvent(`Código "${code}" no coincide con ningún componente de esta receta.`, false);
       showFeedback("error", `Producto ${code} no pertenece a esta receta`);
       setScannedLog((log) => [
         ...log,
@@ -237,7 +254,7 @@ export default function ArmadoPage() {
     const comp = components[idx];
 
     if (comp.scannedCount >= comp.quantity) {
-      setLastScan({ code, ok: false });
+      logScanEvent(`Código "${code}": ya se escanearon todas las unidades de ${comp.product_name}.`, false);
       showFeedback("error", `Ya escaneaste todas las unidades de ${comp.product_name}`);
       setBulkQuantity("1");
       scanInputRef.current?.select();
@@ -252,7 +269,10 @@ export default function ArmadoPage() {
     const remaining = comp.quantity - comp.scannedCount;
 
     if (requested > remaining) {
-      setLastScan({ code, ok: false });
+      logScanEvent(
+        `Código "${code}": pediste ${requested} pero solo falta${remaining === 1 ? "" : "n"} ${remaining} de ${comp.product_name}.`,
+        false
+      );
       showFeedback(
         "error",
         `Pusiste ${requested} pero solo falta${remaining === 1 ? "" : "n"} ${remaining} de ${comp.product_name}. Corregí la cantidad.`
@@ -276,7 +296,7 @@ export default function ArmadoPage() {
     ]);
 
     const newCount = comp.scannedCount + requested;
-    setLastScan({ code, ok: true });
+    logScanEvent(`Código "${code}": ${comp.product_name} (${newCount}/${comp.quantity}).`, true);
     showFeedback("ok", `${comp.product_name} (${newCount}/${comp.quantity})`);
     setBulkQuantity("1");
     setScanValue("");
@@ -511,15 +531,27 @@ export default function ArmadoPage() {
           </p>
         )}
 
-        {/* Último código leído, fijo hasta el próximo escaneo (a diferencia
-            del feedback grande de abajo, que se borra solo). */}
-        {lastScan && (
-          <p
-            className={`text-sm font-medium ${lastScan.ok ? "text-green-700" : "text-red-600"}`}
-          >
-            Último leído: <span className="font-mono">{lastScan.code}</span>{" "}
-            {lastScan.ok ? "✓ aprobado" : "✗ rechazado"}
-          </p>
+        {/* Historial de escaneos, fijo hasta que se acumulen más (a
+            diferencia del feedback grande de abajo, que se borra solo).
+            Más reciente arriba, verde los aprobados y rojo los rechazados. */}
+        {scanHistory.length > 0 && (
+          <div className="rounded-md border border-gray-200 bg-neutral-50 p-3">
+            <p className="mb-2 text-xs font-medium text-neutral-500">Últimos eventos</p>
+            <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
+              {scanHistory.map((ev, i) => (
+                <li
+                  key={i}
+                  className={`flex flex-wrap items-baseline gap-x-2 ${
+                    ev.ok ? "text-green-700" : "text-red-600"
+                  }`}
+                >
+                  <span className="text-xs text-neutral-400">{ev.time}</span>
+                  <span>{ev.message}</span>
+                  <span className="text-xs text-neutral-400">· {ev.puesto}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {/* Feedback visual grande */}
