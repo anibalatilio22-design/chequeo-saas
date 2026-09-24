@@ -339,6 +339,18 @@ export default function EnviosPage() {
     loadShipments();
   }
 
+  // Forma de chequeo del envío Full (por unidad / por ítem) — la fija el
+  // administrador acá, una sola vez por envío completo. Armado ya no deja
+  // elegir nada, usa directo lo que quede guardado en shipments.check_mode.
+  async function updateShipmentCheckMode(shipment: Shipment, checkMode: "unidad" | "item") {
+    setShipments((prev) =>
+      prev.map((s) => (s.id === shipment.id ? { ...s, check_mode: checkMode } : s))
+    );
+    // Mismo motivo de fondo que otros "update" de la app: hace falta castear
+    // toda la consulta para que el cliente tipado no se queje.
+    await (supabase.from("shipments") as any).update({ check_mode: checkMode }).eq("id", shipment.id);
+  }
+
   async function handleDeleteShipment(shipment: Shipment) {
     const confirmed = window.confirm(
       `¿Eliminar el envío "${shipment.code}"? Esto borra también todo su progreso de armado registrado. No se puede deshacer.`
@@ -1109,6 +1121,22 @@ export default function EnviosPage() {
                       </div>
                       {isAdmin && (
                         <div className="flex items-center gap-3">
+                          {s.type === "full" && (
+                            <div className="flex items-center gap-1">
+                              <label className="text-xs text-neutral-400">Chequeo:</label>
+                              <select
+                                value={s.check_mode}
+                                onChange={(e) =>
+                                  updateShipmentCheckMode(s, e.target.value as "unidad" | "item")
+                                }
+                                title="Cómo se chequea este envío en Armado: por unidad (repetir todo el ciclo por cada una) o por ítem (una sola vez, se confirman todas juntas)"
+                                className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
+                              >
+                                <option value="unidad">Por unidad</option>
+                                <option value="item">Por ítem</option>
+                              </select>
+                            </div>
+                          )}
                           <button
                             onClick={() => toggleShipmentStatus(s)}
                             className={`text-sm ${s.status === "open" ? "text-red-600" : "text-green-600"}`}

@@ -51,9 +51,12 @@ export default function ArmadoPage() {
   // Forma de chequeo para Full: "unidad" (como siempre, hay que repetir todo
   // el ciclo por cada unidad) o "item" (se escanean los componentes una sola
   // vez y al confirmar se completan de golpe todas las unidades que falten
-  // de ese ítem). Se elige por etiqueta escaneada, no queda guardado en
-  // ningún lado — por eso se resetea junto con el resto de la receta.
-  const [checkMode, setCheckMode] = useState<"unidad" | "item">("unidad");
+  // de ese ítem). Ya NO lo elige el operario acá — lo fija el administrador
+  // por envío completo desde Envío (shipments.check_mode) y acá se lee nada
+  // más, para que el operario no pueda cambiarlo.
+  const activeShipment = shipments.find((s) => s.id === shipmentId);
+  const activeCheckMode: "unidad" | "item" =
+    shipmentType === "full" ? activeShipment?.check_mode ?? "unidad" : "unidad";
 
   // Historial de escaneos (etiqueta o componente), para mostrarlo fijo justo
   // abajo del campo de escaneo — a diferencia de "feedback" (el cartel
@@ -171,7 +174,6 @@ export default function ArmadoPage() {
     setScannedLog([]);
     setRequired(0);
     setCompleted(0);
-    setCheckMode("unidad");
   }
 
   async function loadProgress(itemId: string) {
@@ -411,7 +413,7 @@ export default function ArmadoPage() {
     // "por unidad", completa nada más lo que falta — nunca se pasa del
     // total). La vista "shipment_progress" solo cuenta filas de esta tabla,
     // así que no hace falta ninguna migración: alcanza con insertar varias.
-    const isItemMode = shipmentType === "full" && checkMode === "item";
+    const isItemMode = activeCheckMode === "item";
     const unitsToConfirm = isItemMode ? Math.max(required - completed, 1) : 1;
 
     // El cliente tipado a veces no logra resolver el tipo de "insert" para
@@ -514,45 +516,20 @@ export default function ArmadoPage() {
           )}
         </div>
 
-        {/* Forma de chequeo — solo tiene sentido para Full: en Flex/Colecta
-            cada paquete es 1 unidad, no hay "etiqueta de 100" que armar.
-            Arriba del campo de escaneo (no adentro de la receta) para poder
-            elegirlo ANTES de escanear la etiqueta, y para que se pueda
-            alcanzar con Shift+Tab desde el lector sin usar el mouse — al
-            elegir, el foco vuelve solo al campo de escaneo para seguir
-            escaneando sin tocar nada más. */}
+        {/* Forma de chequeo (por unidad / por ítem): ya NO se elige acá. La
+            fija el administrador una sola vez por envío completo desde
+            Envío (shipments.check_mode) — este panel es de solo lectura
+            para que el operario sepa qué modo está activo sin poder
+            cambiarlo. */}
         {shipmentType === "full" && (
-          <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-3">
-            <label className="text-sm text-neutral-500">Forma de chequeo</label>
-            <div className="flex gap-2">
-              {(
-                [
-                  { value: "unidad", label: "Por unidad" },
-                  { value: "item", label: "Por ítem" },
-                ] as { value: "unidad" | "item"; label: string }[]
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    setCheckMode(opt.value);
-                    focusScanInput();
-                  }}
-                  className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-yellow-500 ${
-                    checkMode === opt.value
-                      ? "border-yellow-500 bg-yellow-100 text-neutral-900"
-                      : "border-gray-300 bg-white text-neutral-600"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-neutral-400">
-              {checkMode === "item"
-                ? "Escaneás los componentes una sola vez y al confirmar se completan de golpe todas las unidades que le falten a este ítem."
-                : "Repetís el escaneo completo por cada unidad, como siempre."}
-            </p>
+          <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-neutral-500">
+            Forma de chequeo:{" "}
+            <span className="font-medium text-neutral-700">
+              {activeCheckMode === "item" ? "Por ítem" : "Por unidad"}
+            </span>{" "}
+            <span className="text-xs text-neutral-400">
+              (la define el administrador desde Envío)
+            </span>
           </div>
         )}
 
@@ -712,7 +689,7 @@ export default function ArmadoPage() {
               Se completaron todos los componentes de &quot;{recipe?.name}&quot;.
             </p>
 
-            {shipmentType === "full" && checkMode === "item" && (
+            {shipmentType === "full" && activeCheckMode === "item" && (
               <p className="rounded-md bg-amber-50 p-2 text-sm font-medium text-amber-700">
                 Se van a confirmar {Math.max(required - completed, 1)} unidades de este ítem de
                 una sola vez.

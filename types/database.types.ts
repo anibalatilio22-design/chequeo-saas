@@ -116,6 +116,9 @@ export interface Shipment {
   status: ShipmentStatus;
   created_at: string;
   closed_at: string | null;
+  // Forma de chequeo para Full ("unidad" o "item"), la fija el administrador
+  // desde Envío — ver migración 0003. Sin uso real para Flex/Colecta.
+  check_mode: "unidad" | "item";
 }
 
 export interface ShipmentItem {
