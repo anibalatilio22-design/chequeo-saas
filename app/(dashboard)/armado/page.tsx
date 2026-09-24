@@ -58,11 +58,24 @@ export default function ArmadoPage() {
   // Historial de escaneos (etiqueta o componente), para mostrarlo fijo justo
   // abajo del campo de escaneo — a diferencia de "feedback" (el cartel
   // grande de arriba), que se borra solo a los pocos segundos, este queda a
-  // la vista con los últimos eventos, más reciente primero. Se guarda solo
-  // en memoria (no en la base), se pierde al recargar la página.
-  const [scanHistory, setScanHistory] = useState<
-    { time: string; message: string; ok: boolean; puesto: string }[]
-  >([]);
+  // la vista con los últimos eventos, más reciente primero. Se guarda en
+  // localStorage de esta PC (no en la base, no lo ve otro puesto) para que
+  // sobreviva a navegar a otra pantalla y volver, o recargar la página —
+  // antes se perdía porque vivía solo en memoria del componente.
+  type ScanEvent = { time: string; message: string; ok: boolean; puesto: string };
+  const SCAN_HISTORY_STORAGE_KEY = "chequeo_armado_ultimos_eventos";
+
+  function loadScanHistoryFromStorage(): ScanEvent[] {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(SCAN_HISTORY_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as ScanEvent[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  const [scanHistory, setScanHistory] = useState<ScanEvent[]>(loadScanHistoryFromStorage);
 
   // Nombre del puesto de trabajo configurado en esta PC (Configuración lo
   // guarda en localStorage, ver WORKSTATION_STORAGE_KEY en config/page.tsx)
@@ -75,7 +88,17 @@ export default function ArmadoPage() {
 
   function logScanEvent(message: string, ok: boolean) {
     const time = new Date().toLocaleTimeString("es-AR");
-    setScanHistory((log) => [{ time, message, ok, puesto: currentWorkstationName() }, ...log].slice(0, 20));
+    setScanHistory((log) => {
+      const next = [{ time, message, ok, puesto: currentWorkstationName() }, ...log].slice(0, 20);
+      try {
+        if (typeof window !== "undefined") {
+          localStorage.setItem(SCAN_HISTORY_STORAGE_KEY, JSON.stringify(next));
+        }
+      } catch {
+        // localStorage puede fallar (lleno, modo privado, etc.) — no bloquea el escaneo.
+      }
+      return next;
+    });
   }
 
   // Modal de confirmación
