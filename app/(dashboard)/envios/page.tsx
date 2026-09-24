@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Product, Recipe, Shipment, ShipmentProgress, ShipmentType } from "@/types/database.types";
 import type { ParsedMlRow } from "@/lib/parse-ml-pdf";
@@ -90,6 +90,61 @@ export default function EnviosPage() {
   // necesidad de tocar nada para verlos.
   const [itemsByShipment, setItemsByShipment] = useState<Record<string, ShipmentProgress[]>>({});
   const [loadingItemsFor, setLoadingItemsFor] = useState<Record<string, boolean>>({});
+
+  // Listado de envíos de más abajo: separado por Full / Flex-Colecta (mismo
+  // patrón que Progreso y Armado) con un buscador de pedidos puntuales.
+  const [listShipmentType, setListShipmentType] = useState<ShipmentType>("full");
+  const [listSearchQuery, setListSearchQuery] = useState("");
+
+  // SKU de cada producto de cada receta, para poder buscar en Full por el
+  // SKU real del producto (no solo por el "Código ML", que es un número
+  // aparte que le pone Mercado Libre a la publicación). Se completa de a
+  // poco a medida que van llegando items nuevos en itemsByShipment.
+  const [skusByRecipe, setSkusByRecipe] = useState<Record<string, string[]>>({});
+  const requestedSkuRecipeIds = useRef<Set<string>>(new Set());
+
+  async function loadSkusForRecipes(recipeIds: string[]) {
+    if (recipeIds.length === 0) return;
+    const { data } = await supabase
+      .from("recipe_components")
+      .select("recipe_id, product_sku")
+      .in("recipe_id", recipeIds);
+
+    const grouped: Record<string, string[]> = {};
+    ((data ?? []) as { recipe_id: string; product_sku: string | null }[]).forEach((row) => {
+      if (!row.product_sku) return;
+      (grouped[row.recipe_id] ??= []).push(row.product_sku);
+    });
+    setSkusByRecipe((prev) => ({ ...prev, ...grouped }));
+  }
+
+  useEffect(() => {
+    const allRecipeIds = Object.values(itemsByShipment)
+      .flat()
+      .map((it) => it.recipe_id);
+    const missing = Array.from(new Set(allRecipeIds)).filter(
+      (id) => !requestedSkuRecipeIds.current.has(id)
+    );
+    if (missing.length === 0) return;
+    missing.forEach((id) => requestedSkuRecipeIds.current.add(id));
+    loadSkusForRecipes(missing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsByShipment]);
+
+  // Un item matchea la búsqueda si no hay texto cargado (se ven todos), o si
+  // el texto aparece en el "Código a escanear" (código ML / número de venta,
+  // sirve para los dos tipos) — y además, según el tipo: en Full, en el SKU
+  // real de algún producto de esa receta; en Flex/Colecta, en el nombre del
+  // cliente (que ya forma parte del nombre de la receta armada, ver import).
+  function itemMatchesSearch(it: ShipmentProgress): boolean {
+    const q = listSearchQuery.trim().toLowerCase();
+    if (!q) return true;
+    if (it.label_ean?.toLowerCase().includes(q)) return true;
+    if (listShipmentType === "full") {
+      return (skusByRecipe[it.recipe_id] ?? []).some((sku) => sku.toLowerCase().includes(q));
+    }
+    return (it.recipe_name ?? "").toLowerCase().includes(q);
+  }
 
   async function loadShipmentItems(shipmentId: string) {
     setLoadingItemsFor((prev) => ({ ...prev, [shipmentId]: true }));
@@ -998,82 +1053,128 @@ export default function EnviosPage() {
         </section>
       )}
 
-      {/* Listado de envíos */}
+      {/* Listado de envíos, separado por tipo con buscador de pedidos */}
       <section className="space-y-3">
-        <h2 className="text-lg font-medium">Envíos ({shipments.length})</h2>
-        <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
-          {shipments.map((s) => {
-            const items = itemsByShipment[s.id] ?? [];
-            const loadingThis = !!loadingItemsFor[s.id];
-            return (
-              <li key={s.id} className="px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium">{s.code}</span>
-                    <span className="ml-2 text-sm text-neutral-500">
-                      {s.type} · {s.status === "open" ? "abierto" : "cerrado"}
-                    </span>
-                  </div>
-                  {isAdmin && (
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => toggleShipmentStatus(s)}
-                        className={`text-sm ${s.status === "open" ? "text-red-600" : "text-green-600"}`}
-                      >
-                        {s.status === "open" ? "Cerrar envío" : "Reabrir envío"}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteShipment(s)}
-                        className="text-sm text-neutral-400 hover:text-red-600"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  )}
-                </div>
+        <h2 className="text-lg font-medium">Envíos</h2>
 
-                {/* Items del envío: siempre a la vista, no hace falta tocar nada. */}
-                <div className="mt-3 border-t border-gray-100 pt-3">
-                  {loadingThis ? (
-                    <p className="text-sm text-neutral-500">Cargando items...</p>
-                  ) : items.length === 0 ? (
-                    <p className="text-sm text-neutral-500">Este envío no tiene items cargados.</p>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-neutral-500">
-                          <th className="py-1 pr-3">Código a escanear</th>
-                          <th className="py-1 pr-3">Receta / Producto</th>
-                          <th className="py-1 pr-3">Pedido</th>
-                          <th className="py-1 pr-3">Armado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((it) => {
-                          const done = it.quantity_completed >= it.quantity_required;
-                          return (
-                            <tr key={it.shipment_item_id} className="border-t border-gray-100">
-                              <td className="py-1 pr-3 font-medium">{it.label_ean}</td>
-                              <td className="py-1 pr-3">{it.recipe_name}</td>
-                              <td className="py-1 pr-3">{it.quantity_required}</td>
-                              <td className={`py-1 pr-3 ${done ? "text-green-600" : "text-neutral-700"}`}>
-                                {it.quantity_completed}
-                                {done ? " ✓" : ""}
-                              </td>
+        <div className="flex gap-2">
+          {(["full", "flex"] as ShipmentType[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => {
+                setListShipmentType(t);
+                setListSearchQuery("");
+              }}
+              className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
+                listShipmentType === t
+                  ? "border-yellow-500 bg-yellow-100 text-neutral-900"
+                  : "border-gray-300 bg-white text-neutral-600"
+              }`}
+            >
+              {t === "flex" ? "Flex / Colecta" : "Full"}
+            </button>
+          ))}
+        </div>
+
+        <input
+          value={listSearchQuery}
+          onChange={(e) => setListSearchQuery(e.target.value)}
+          placeholder={
+            listShipmentType === "full"
+              ? "Buscar pedido por Código ML o SKU del producto..."
+              : "Buscar pedido por número de envío o nombre del cliente..."
+          }
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+        />
+
+        {(() => {
+          const visibleShipments = shipments.filter((s) =>
+            listShipmentType === "full" ? s.type === "full" : s.type !== "full"
+          );
+          const searching = listSearchQuery.trim().length > 0;
+          return (
+            <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+              {visibleShipments.map((s) => {
+                const items = (itemsByShipment[s.id] ?? []).filter(itemMatchesSearch);
+                const loadingThis = !!loadingItemsFor[s.id];
+                return (
+                  <li key={s.id} className="px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-medium">{s.code}</span>
+                        <span className="ml-2 text-sm text-neutral-500">
+                          {s.status === "open" ? "abierto" : "cerrado"}
+                        </span>
+                      </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => toggleShipmentStatus(s)}
+                            className={`text-sm ${s.status === "open" ? "text-red-600" : "text-green-600"}`}
+                          >
+                            {s.status === "open" ? "Cerrar envío" : "Reabrir envío"}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteShipment(s)}
+                            className="text-sm text-neutral-400 hover:text-red-600"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Items del envío: siempre a la vista, no hace falta tocar nada. */}
+                    <div className="mt-3 border-t border-gray-100 pt-3">
+                      {loadingThis ? (
+                        <p className="text-sm text-neutral-500">Cargando items...</p>
+                      ) : items.length === 0 ? (
+                        <p className="text-sm text-neutral-500">
+                          {searching
+                            ? "Sin resultados para esa búsqueda en este envío."
+                            : "Este envío no tiene items cargados."}
+                        </p>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-neutral-500">
+                              <th className="py-1 pr-3">Código a escanear</th>
+                              <th className="py-1 pr-3">Receta / Producto</th>
+                              <th className="py-1 pr-3">Pedido</th>
+                              <th className="py-1 pr-3">Armado</th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-          {shipments.length === 0 && (
-            <li className="px-4 py-3 text-sm text-neutral-500">Todavía no hay envíos cargados.</li>
-          )}
-        </ul>
+                          </thead>
+                          <tbody>
+                            {items.map((it) => {
+                              const done = it.quantity_completed >= it.quantity_required;
+                              return (
+                                <tr key={it.shipment_item_id} className="border-t border-gray-100">
+                                  <td className="py-1 pr-3 font-medium">{it.label_ean}</td>
+                                  <td className="py-1 pr-3">{it.recipe_name}</td>
+                                  <td className="py-1 pr-3">{it.quantity_required}</td>
+                                  <td className={`py-1 pr-3 ${done ? "text-green-600" : "text-neutral-700"}`}>
+                                    {it.quantity_completed}
+                                    {done ? " ✓" : ""}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+              {visibleShipments.length === 0 && (
+                <li className="px-4 py-3 text-sm text-neutral-500">
+                  Todavía no hay envíos de tipo {listShipmentType === "full" ? "Full" : "Flex / Colecta"}.
+                </li>
+              )}
+            </ul>
+          );
+        })()}
       </section>
     </main>
   );
