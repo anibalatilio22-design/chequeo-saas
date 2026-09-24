@@ -514,6 +514,48 @@ export default function ArmadoPage() {
           )}
         </div>
 
+        {/* Forma de chequeo — solo tiene sentido para Full: en Flex/Colecta
+            cada paquete es 1 unidad, no hay "etiqueta de 100" que armar.
+            Arriba del campo de escaneo (no adentro de la receta) para poder
+            elegirlo ANTES de escanear la etiqueta, y para que se pueda
+            alcanzar con Shift+Tab desde el lector sin usar el mouse — al
+            elegir, el foco vuelve solo al campo de escaneo para seguir
+            escaneando sin tocar nada más. */}
+        {shipmentType === "full" && (
+          <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-3">
+            <label className="text-sm text-neutral-500">Forma de chequeo</label>
+            <div className="flex gap-2">
+              {(
+                [
+                  { value: "unidad", label: "Por unidad" },
+                  { value: "item", label: "Por ítem" },
+                ] as { value: "unidad" | "item"; label: string }[]
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setCheckMode(opt.value);
+                    focusScanInput();
+                  }}
+                  className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-yellow-500 ${
+                    checkMode === opt.value
+                      ? "border-yellow-500 bg-yellow-100 text-neutral-900"
+                      : "border-gray-300 bg-white text-neutral-600"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-neutral-400">
+              {checkMode === "item"
+                ? "Escaneás los componentes una sola vez y al confirmar se completan de golpe todas las unidades que le falten a este ítem."
+                : "Repetís el escaneo completo por cada unidad, como siempre."}
+            </p>
+          </div>
+        )}
+
         {/* Input de escaneo, siempre enfocado. Va solo dentro del <form> (un
             único campo) para que el Enter del lector de código de barras
             siga disparando el envío como antes — el de Cantidad queda afuera
@@ -577,40 +619,6 @@ export default function ArmadoPage() {
                 Avance: {completed}/{required}
               </span>
             </div>
-
-            {/* Forma de chequeo — solo tiene sentido para Full: en Flex/Colecta
-                cada paquete es 1 unidad, no hay "etiqueta de 100" que armar. */}
-            {shipmentType === "full" && (
-              <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-3">
-                <label className="text-sm text-neutral-500">Forma de chequeo</label>
-                <div className="flex gap-2">
-                  {(
-                    [
-                      { value: "unidad", label: "Por unidad" },
-                      { value: "item", label: "Por ítem" },
-                    ] as { value: "unidad" | "item"; label: string }[]
-                  ).map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setCheckMode(opt.value)}
-                      className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
-                        checkMode === opt.value
-                          ? "border-yellow-500 bg-yellow-100 text-neutral-900"
-                          : "border-gray-300 bg-white text-neutral-600"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-neutral-400">
-                  {checkMode === "item"
-                    ? "Escaneás los componentes una sola vez y al confirmar se completan de golpe todas las unidades que le falten a este ítem."
-                    : "Repetís el escaneo completo por cada unidad, como siempre."}
-                </p>
-              </div>
-            )}
 
             <ul className="space-y-1">
               {components.map((c) => (
