@@ -139,12 +139,41 @@ export default function ConfigPage() {
 
     setLogoError(null);
 
-    if (!file.type.startsWith("image/")) {
-      setLogoError("El archivo tiene que ser una imagen (PNG, JPG, etc).");
+    // El logo de la empresa se usa en la barra de arriba Y en el remito
+    // impreso, así que exigimos que venga en condiciones de verse nítido en
+    // los dos lados: PNG (para que tenga fondo transparente) y con
+    // resolución mínima (para que no se vea pixelado, sobre todo impreso).
+    if (file.type !== "image/png") {
+      setLogoError("El logo tiene que subirse en formato PNG (con fondo transparente, si es posible).");
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
       setLogoError("La imagen no puede pesar más de 2 MB.");
+      return;
+    }
+
+    const dimensions = await new Promise<{ width: number; height: number } | null>((resolve) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(null);
+      };
+      img.src = objectUrl;
+    });
+
+    if (!dimensions) {
+      setLogoError("No se pudo leer la imagen. Probá con otro archivo.");
+      return;
+    }
+    if (dimensions.width < 500 || dimensions.height < 500) {
+      setLogoError(
+        `La imagen es de ${dimensions.width}x${dimensions.height} píxeles y se puede ver borrosa. Subí una de al menos 500x500 píxeles.`
+      );
       return;
     }
 
@@ -302,7 +331,11 @@ export default function ConfigPage() {
           <h2 className="text-lg font-medium">Perfil de la empresa</h2>
           <p className="text-sm text-neutral-500">
             Nombre, dirección, teléfono y logo de tu empresa. El logo aparece al lado del nombre en la
-            barra de arriba.
+            barra de arriba y en el remito de despacho.
+          </p>
+          <p className="text-xs text-neutral-400">
+            El logo se tiene que subir en formato PNG (con fondo transparente, si es posible) y de al
+            menos 500x500 píxeles, para que se vea nítido tanto en pantalla como impreso.
           </p>
         </div>
 
@@ -320,7 +353,7 @@ export default function ConfigPage() {
               {uploadingLogo ? "Subiendo..." : company?.logo_url ? "Cambiar logo" : "Subir logo"}
               <input
                 type="file"
-                accept="image/*"
+                accept="image/png"
                 onChange={handleLogoUpload}
                 disabled={uploadingLogo}
                 className="hidden"

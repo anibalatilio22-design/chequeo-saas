@@ -295,6 +295,10 @@ export default function ProgresoPage() {
       // empresa en texto grande en vez del logo.
       let logoDataUrl: string | null = null;
       let logoFormat: string | null = null;
+      // Ancho/alto reales del logo (en la imagen original) para dibujarlo
+      // respetando su forma en vez de estirarlo a un cuadrado — ver
+      // logoDrawSize más abajo.
+      let logoNaturalSize: { width: number; height: number } | null = null;
       if (company?.logo_url) {
         try {
           const resp = await fetch(company.logo_url);
@@ -309,6 +313,12 @@ export default function ProgresoPage() {
           else if (dataUrl.includes("image/webp")) logoFormat = "WEBP";
           else logoFormat = "JPEG";
           logoDataUrl = dataUrl;
+          logoNaturalSize = await new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+            img.onerror = () => resolve(null);
+            img.src = dataUrl;
+          });
         } catch {
           logoDataUrl = null;
           logoFormat = null;
@@ -323,7 +333,32 @@ export default function ProgresoPage() {
 
       if (logoDataUrl && logoFormat) {
         try {
-          doc.addImage(logoDataUrl, logoFormat, marginX, y - 8, 22, 22);
+          // El logo se dibuja respetando su forma real (ancho x alto) dentro
+          // de un espacio de 22x22mm, en vez de estirarlo a un cuadrado —
+          // igual criterio que "object-contain" en la barra de arriba. Si por
+          // algún motivo no se pudo leer el tamaño real de la imagen, se cae
+          // al cuadrado de siempre como respaldo.
+          const boxSize = 22;
+          let drawWidth = boxSize;
+          let drawHeight = boxSize;
+          if (logoNaturalSize && logoNaturalSize.width > 0 && logoNaturalSize.height > 0) {
+            const scale = Math.min(
+              boxSize / logoNaturalSize.width,
+              boxSize / logoNaturalSize.height
+            );
+            drawWidth = logoNaturalSize.width * scale;
+            drawHeight = logoNaturalSize.height * scale;
+          }
+          const offsetX = (boxSize - drawWidth) / 2;
+          const offsetY = (boxSize - drawHeight) / 2;
+          doc.addImage(
+            logoDataUrl,
+            logoFormat,
+            marginX + offsetX,
+            y - 8 + offsetY,
+            drawWidth,
+            drawHeight
+          );
         } catch {
           // Si la imagen no se puede insertar, seguimos sin logo.
         }
