@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Chequeo Full / Flex / Colecta",
+  title: "CheckFlash — Chequeo Full / Flex / Colecta",
   description: "Verificación de armado de combos por escaneo de código de barras",
 };
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { CheckFlashLogo } from "@/components/checkflash-logo";
 
 // Reemplaza a la "contraseña general de la app" del prototipo.
 // Cada persona de cada empresa entra con su propio email + contraseña
@@ -55,7 +56,8 @@ export default function LoginPage() {
 
   if (showForgot) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white px-4">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-white px-4">
+        <CheckFlashLogo />
         <div className="w-full max-w-sm space-y-4 rounded-xl border border-gray-200 bg-white p-6">
           <h1 className="text-lg font-semibold text-neutral-900">Recuperar contraseña</h1>
 
@@ -101,15 +103,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-white px-4">
+      <CheckFlashLogo />
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-sm space-y-4 rounded-xl border border-gray-200 bg-white p-6"
       >
-        <h1 className="text-lg font-semibold text-neutral-900">
-          Chequeo Full / Flex / Colecta
-        </h1>
-
         <div className="space-y-1">
           <label className="text-sm text-neutral-500">Email</label>
           <input

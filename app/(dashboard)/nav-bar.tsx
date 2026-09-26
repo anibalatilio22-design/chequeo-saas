@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { CheckFlashIcon } from "@/components/checkflash-logo";
 
 const TABS = [
   { href: "/armado", label: "Chequeo", adminOnly: false },
@@ -36,8 +37,15 @@ export default function NavBar({
   return (
     <header className="bg-yellow-400 shadow-sm">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-2">
-        {(logoUrl || companyName) && (
-          <div className="flex shrink-0 items-center gap-3">
+        <div className="flex shrink-0 items-center gap-4">
+          {/* Marca del sistema (CheckFlash) — separada del logo de la empresa,
+              que se sube desde Configuración y aparece a continuación. */}
+          <Link href="/" className="flex shrink-0 items-center" title="CheckFlash">
+            <CheckFlashIcon size={40} />
+          </Link>
+
+          {(logoUrl || companyName) && (
+            <div className="flex shrink-0 items-center gap-3">
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -51,8 +59,9 @@ export default function NavBar({
                 {companyName}
               </span>
             )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
         <nav className="flex gap-6">
           {TABS.filter((tab) => !tab.adminOnly || role === "admin").map((tab) => {
