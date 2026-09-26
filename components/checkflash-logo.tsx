@@ -44,22 +44,30 @@ export function CheckFlashIcon({ size = 40, className }: { size?: number; classN
 export function CheckFlashLogo({
   withSubtitle = true,
   iconSize = 56,
+  // "light" = texto oscuro, pensado para fondos claros (pantalla de login).
+  // "dark" = texto blanco, pensado para fondos oscuros/de color (ej: la
+  // franja de la barra de arriba, ver nav-bar.tsx).
+  variant = "light",
   className,
 }: {
   withSubtitle?: boolean;
   iconSize?: number;
+  variant?: "light" | "dark";
   className?: string;
 }) {
+  const checkColor = variant === "dark" ? "text-white" : "text-neutral-900";
+  const subtitleColor = variant === "dark" ? "text-neutral-300" : "text-neutral-500";
+
   return (
     <div className={`flex items-center gap-3 ${className ?? ""}`}>
       <CheckFlashIcon size={iconSize} />
       <div className="flex flex-col">
         <span className="text-2xl font-extrabold leading-none tracking-tight">
-          <span className="text-neutral-900">CHECK</span>
+          <span className={checkColor}>CHECK</span>
           <span className="text-amber-500">FLASH</span>
         </span>
         {withSubtitle && (
-          <span className="mt-1 text-[10px] font-medium uppercase tracking-widest text-neutral-500">
+          <span className={`mt-1 text-[10px] font-medium uppercase tracking-widest ${subtitleColor}`}>
             Verificación de pedidos Full, Flex y Colecta
           </span>
         )}
