@@ -52,7 +52,7 @@ export default function NavBar({
 
   return (
     <header className="bg-yellow-400 shadow-sm">
-      <div className="flex h-24 items-stretch justify-between overflow-x-auto">
+      <div className="flex h-24 items-stretch justify-between">
         {/* Izquierda: logo de la empresa (el que se sube desde Configuración),
             en su propio espacio con fondo blanco (para que no quede flotando
             directo sobre el amarillo), pegado al borde y ocupando el alto de
