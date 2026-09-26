@@ -54,21 +54,25 @@ export default function NavBar({
     <header className="bg-yellow-400 shadow-sm">
       <div className="flex h-16 items-stretch justify-between overflow-x-auto">
         {/* Izquierda: logo de la empresa (el que se sube desde Configuración),
-            pegado al borde de la pantalla y ocupando el alto de la barra. */}
-        <div className="flex shrink-0 items-stretch">
-          {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={logoUrl}
-              alt={companyName ? `Logo de ${companyName}` : "Logo de la empresa"}
-              className="h-full w-auto max-w-[180px] object-contain py-2 pl-3 pr-2"
-            />
-          ) : companyName ? (
-            <span className="flex items-center pl-3 pr-2 text-base font-semibold text-neutral-900">
-              {companyName}
-            </span>
-          ) : null}
-        </div>
+            en su propio espacio con fondo blanco (para que no quede flotando
+            directo sobre el amarillo), pegado al borde y ocupando el alto de
+            la barra. */}
+        {(logoUrl || companyName) && (
+          <div className="my-2 flex shrink-0 items-center rounded-xl bg-white shadow-sm">
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt={companyName ? `Logo de ${companyName}` : "Logo de la empresa"}
+                className="h-full w-auto max-w-[180px] object-contain px-3 py-1.5"
+              />
+            ) : (
+              <span className="flex items-center px-3 text-base font-semibold text-neutral-900">
+                {companyName}
+              </span>
+            )}
+          </div>
+        )}
 
         <nav className="flex flex-1 items-center justify-center gap-3 px-1 sm:gap-5">
           {TABS.filter((tab) => !tab.adminOnly || role === "admin").map((tab) => {
@@ -131,13 +135,17 @@ export default function NavBar({
             )}
           </div>
 
-          <Link href="/" className="flex shrink-0 items-stretch bg-[#0F1420] px-3" title="CheckFlash">
+          <Link
+            href="/"
+            className="my-2 flex shrink-0 items-center rounded-xl bg-[#0F1420] px-3 shadow-sm"
+            title="CheckFlash"
+          >
             <CheckFlashLogo
               iconSize={30}
-              wordmarkSize="text-lg"
+              wordmarkSize="text-base"
+              wordmarkStyle="plain"
               withSubtitle={false}
               variant="dark"
-              className="my-auto"
             />
           </Link>
         </div>

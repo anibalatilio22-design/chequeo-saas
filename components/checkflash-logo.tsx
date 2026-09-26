@@ -44,10 +44,15 @@ export function CheckFlashIcon({ size = 40, className }: { size?: number; classN
 export function CheckFlashLogo({
   withSubtitle = true,
   iconSize = 56,
-  // Tamaño del texto "CHECKFLASH". Más chico en la barra de arriba
-  // (nav-bar.tsx) para que entre junto con el resto de la barra en
-  // pantallas no tan anchas.
+  // Tamaño del texto. Más chico en la barra de arriba (nav-bar.tsx) para
+  // que entre junto con el resto de la barra en pantallas no tan anchas.
   wordmarkSize = "text-2xl",
+  // "brand" = "CHECK" + "FLASH" en mayúsculas, negrita, con "FLASH" en
+  // color ámbar — el logotipo grande de la pantalla de login.
+  // "plain" = "CheckFlash" con mayúscula solo en cada palabra, sin negrita
+  // extra ni color partido — como se ve el título en la pestaña del
+  // navegador. Se usa en la barra de arriba, más chico y sobrio.
+  wordmarkStyle = "brand",
   // "light" = texto oscuro, pensado para fondos claros (pantalla de login).
   // "dark" = texto blanco, pensado para fondos oscuros/de color (ej: la
   // franja de la barra de arriba, ver nav-bar.tsx).
@@ -57,20 +62,27 @@ export function CheckFlashLogo({
   withSubtitle?: boolean;
   iconSize?: number;
   wordmarkSize?: string;
+  wordmarkStyle?: "brand" | "plain";
   variant?: "light" | "dark";
   className?: string;
 }) {
-  const checkColor = variant === "dark" ? "text-white" : "text-neutral-900";
+  const textColor = variant === "dark" ? "text-white" : "text-neutral-900";
   const subtitleColor = variant === "dark" ? "text-neutral-300" : "text-neutral-500";
 
   return (
     <div className={`flex items-center gap-2 ${className ?? ""}`}>
       <CheckFlashIcon size={iconSize} />
       <div className="flex flex-col">
-        <span className={`${wordmarkSize} font-extrabold leading-none tracking-tight whitespace-nowrap`}>
-          <span className={checkColor}>CHECK</span>
-          <span className="text-amber-500">FLASH</span>
-        </span>
+        {wordmarkStyle === "plain" ? (
+          <span className={`${wordmarkSize} font-semibold leading-none whitespace-nowrap ${textColor}`}>
+            CheckFlash
+          </span>
+        ) : (
+          <span className={`${wordmarkSize} font-extrabold leading-none tracking-tight whitespace-nowrap`}>
+            <span className={textColor}>CHECK</span>
+            <span className="text-amber-500">FLASH</span>
+          </span>
+        )}
         {withSubtitle && (
           <span className={`mt-1 text-[10px] font-medium uppercase tracking-widest ${subtitleColor}`}>
             Verificación de pedidos Full, Flex y Colecta
