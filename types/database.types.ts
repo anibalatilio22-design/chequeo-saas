@@ -54,6 +54,11 @@ export interface Product {
   name: string;
   active: boolean;
   created_at: string;
+  // Foto de referencia y link a la publicación de Mercado Libre, para poder
+  // verificar el producto en caso de duda (ver migración 0004). Se editan
+  // desde Catálogo y se pueden ver también desde Armado mientras se escanea.
+  image_url: string | null;
+  ml_link: string | null;
 }
 
 // Sucursal/depósito — primer paso del módulo de Stock. Hoy cada empresa

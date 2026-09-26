@@ -5,7 +5,26 @@ import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import type { Product, Recipe, RecipeComponent, ProductStock } from "@/types/database.types";
 
-type ComponentDraft = { ean: string; sku: string; name: string; quantity: string };
+// "imageFile" es la foto recién elegida en el <input type="file">, todavía
+// sin subir (se sube recién al guardar, junto con el resto del ítem).
+// "imageUrl" es la que ya está guardada en el producto (al editar) o una
+// vista previa local de "imageFile" mientras no se guardó — sirve para
+// mostrar la miniatura sin tener que subir nada hasta confirmar. "mlLink"
+// es el link a la publicación en Mercado Libre, para poder abrirla y
+// comparar en caso de duda.
+type ComponentDraft = {
+  ean: string;
+  sku: string;
+  name: string;
+  quantity: string;
+  imageFile: File | null;
+  imageUrl: string;
+  mlLink: string;
+};
+
+function emptyComponentDraft(): ComponentDraft {
+  return { ean: "", sku: "", name: "", quantity: "1", imageFile: null, imageUrl: "", mlLink: "" };
+}
 
 // Ya no hay dos listas separadas (Productos / Recetas). Todo lo que se carga
 // acá es, por dentro, una "receta": si tiene un solo componente (él mismo)
@@ -15,9 +34,16 @@ type ComponentDraft = { ean: string; sku: string; name: string; quantity: string
 // distinto del SKU de cada producto que lo compone. El sistema siempre
 // busca primero por SKU (es el dato fijo, único e intransferible, que nunca
 // cambia de envío en envío) y recién si no hay SKU prueba por EAN.
+//
+// El combo también puede tener su propia foto/link (los del producto final
+// que se vende, distintos de los de cada componente que lo arma) — mismo
+// criterio de imageFile/imageUrl/mlLink que en ComponentDraft.
 type ItemDraft = {
   comboSku: string;
   comboName: string;
+  comboImageFile: File | null;
+  comboImageUrl: string;
+  comboMlLink: string;
   components: ComponentDraft[];
 };
 
@@ -302,7 +328,10 @@ export default function RecetasPage() {
   const emptyItemDraft: ItemDraft = {
     comboSku: "",
     comboName: "",
-    components: [{ ean: "", sku: "", name: "", quantity: "1" }],
+    comboImageFile: null,
+    comboImageUrl: "",
+    comboMlLink: "",
+    components: [emptyComponentDraft()],
   };
   const [newItem, setNewItem] = useState<ItemDraft>(emptyItemDraft);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -343,7 +372,7 @@ export default function RecetasPage() {
     draft: ItemDraft,
     setDraft: (d: ItemDraft) => void,
     index: number,
-    field: keyof ComponentDraft,
+    field: "ean" | "sku" | "name" | "quantity" | "mlLink",
     value: string
   ) {
     setDraft({
@@ -352,12 +381,64 @@ export default function RecetasPage() {
     });
   }
 
+  // Aparte del genérico de arriba porque acá el valor no es texto: guarda el
+  // archivo elegido y arma una vista previa local (URL temporal del propio
+  // navegador) para mostrar la miniatura antes de guardar/subir nada.
+  function updateDraftComponentImage(
+    draft: ItemDraft,
+    setDraft: (d: ItemDraft) => void,
+    index: number,
+    file: File | null
+  ) {
+    setDraft({
+      ...draft,
+      components: draft.components.map((row, i) =>
+        i === index ? { ...row, imageFile: file, imageUrl: file ? URL.createObjectURL(file) : row.imageUrl } : row
+      ),
+    });
+  }
+
   function addDraftRow(draft: ItemDraft, setDraft: (d: ItemDraft) => void) {
-    setDraft({ ...draft, components: [...draft.components, { ean: "", sku: "", name: "", quantity: "1" }] });
+    setDraft({ ...draft, components: [...draft.components, emptyComponentDraft()] });
   }
 
   function removeDraftRow(draft: ItemDraft, setDraft: (d: ItemDraft) => void, index: number) {
     setDraft({ ...draft, components: draft.components.filter((_, i) => i !== index) });
+  }
+
+  // Sube una foto de producto al espacio de almacenamiento y devuelve su URL
+  // pública — mismo criterio que ya se usa para el logo de la empresa
+  // (Configuración), pero en el bucket "product-images" (ver migración
+  // 0004) y con un nombre de archivo único por foto (no por producto, para
+  // no pisar la foto vieja mientras se sube la nueva).
+  async function uploadProductImage(file: File): Promise<{ url: string | null; error?: string }> {
+    if (!file.type.startsWith("image/")) {
+      return { url: null, error: "El archivo tiene que ser una imagen (PNG, JPG, etc)." };
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      return { url: null, error: "La imagen no puede pesar más de 2 MB." };
+    }
+    if (!companyId) return { url: null, error: "No se encontró la empresa" };
+
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${companyId}/${crypto.randomUUID()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("product-images")
+      .upload(path, file, { upsert: true, cacheControl: "3600" });
+
+    if (uploadError) {
+      return {
+        url: null,
+        error:
+          uploadError.message.includes("not found") || uploadError.message.includes("Bucket")
+            ? "Todavía no está creado el espacio de almacenamiento para fotos de producto (falta correr la migración)."
+            : uploadError.message,
+      };
+    }
+
+    const { data: publicUrlData } = supabase.storage.from("product-images").getPublicUrl(path);
+    return { url: `${publicUrlData.publicUrl}?v=${Date.now()}` };
   }
 
   // Busca un producto por SKU (primero) o EAN en el catálogo; si no existe y
@@ -366,10 +447,17 @@ export default function RecetasPage() {
   // producto aparte antes. El SKU se prioriza porque es el dato fijo, único
   // e intransferible que no cambia de envío en envío — el EAN muchas veces
   // ni siquiera lo trae la etiqueta real de Mercado Libre.
+  //
+  // "extra" son la foto (ya subida, como URL) y el link de Mercado Libre que
+  // se hayan cargado para este producto en el formulario: si el producto ya
+  // existía, ACTUALIZA esos datos (para que editar la foto/link de un
+  // producto ya cargado funcione igual que crearlo); si se está creando,
+  // los guarda de una junto con el resto.
   async function resolveOrCreateProduct(
     ean: string,
     sku: string,
-    name: string
+    name: string,
+    extra?: { imageUrl?: string | null; mlLink?: string | null }
   ): Promise<{ product: Product | null; error?: string }> {
     const eanTrim = ean.trim();
     const skuTrim = sku.trim();
@@ -380,7 +468,18 @@ export default function RecetasPage() {
     }
 
     const existing = products.find((p) => (skuTrim && p.sku === skuTrim) || (eanTrim && p.ean === eanTrim));
-    if (existing) return { product: existing };
+    if (existing) {
+      const hasNewImage = extra?.imageUrl && extra.imageUrl !== existing.image_url;
+      const hasNewLink = extra?.mlLink !== undefined && (extra.mlLink || null) !== existing.ml_link;
+      if (hasNewImage || hasNewLink) {
+        const patch: { image_url?: string; ml_link?: string | null } = {};
+        if (hasNewImage) patch.image_url = extra!.imageUrl!;
+        if (hasNewLink) patch.ml_link = extra!.mlLink || null;
+        await (supabase.from("products") as any).update(patch).eq("id", existing.id);
+        Object.assign(existing, patch);
+      }
+      return { product: existing };
+    }
 
     if (!nameTrim) {
       return { product: null, error: "Ese EAN/SKU no está en el catálogo — completá el nombre para crearlo" };
@@ -389,7 +488,14 @@ export default function RecetasPage() {
 
     const { data: createdRaw, error } = await supabase
       .from("products")
-      .insert({ company_id: companyId, ean: eanTrim || null, sku: skuTrim || null, name: nameTrim } as any)
+      .insert({
+        company_id: companyId,
+        ean: eanTrim || null,
+        sku: skuTrim || null,
+        name: nameTrim,
+        image_url: extra?.imageUrl || null,
+        ml_link: extra?.mlLink || null,
+      } as any)
       .select()
       .single();
 
@@ -451,7 +557,20 @@ export default function RecetasPage() {
 
     const resolvedComponents: { product: Product; quantity: number }[] = [];
     for (const row of validRows) {
-      const { product, error: rowError } = await resolveOrCreateProduct(row.ean, row.sku, row.name);
+      let imageUrl = row.imageUrl;
+      if (row.imageFile) {
+        const { url, error: imgError } = await uploadProductImage(row.imageFile);
+        if (!url) {
+          setSaving(false);
+          setCreateError(imgError ?? "No se pudo subir la foto");
+          return;
+        }
+        imageUrl = url;
+      }
+      const { product, error: rowError } = await resolveOrCreateProduct(row.ean, row.sku, row.name, {
+        imageUrl,
+        mlLink: row.mlLink,
+      });
       if (!product) {
         setSaving(false);
         setCreateError(rowError ?? "No se pudo identificar un producto");
@@ -463,7 +582,20 @@ export default function RecetasPage() {
     let outputProduct: Product;
     let recipeName: string;
     if (isCombo) {
-      const { product, error: outputError } = await resolveOrCreateProduct("", newItem.comboSku, newItem.comboName);
+      let comboImageUrl = newItem.comboImageUrl;
+      if (newItem.comboImageFile) {
+        const { url, error: imgError } = await uploadProductImage(newItem.comboImageFile);
+        if (!url) {
+          setSaving(false);
+          setCreateError(imgError ?? "No se pudo subir la foto del combo");
+          return;
+        }
+        comboImageUrl = url;
+      }
+      const { product, error: outputError } = await resolveOrCreateProduct("", newItem.comboSku, newItem.comboName, {
+        imageUrl: comboImageUrl,
+        mlLink: newItem.comboMlLink,
+      });
       if (!product) {
         setSaving(false);
         setCreateError(outputError ?? "No se pudo identificar el producto del combo");
@@ -529,15 +661,24 @@ export default function RecetasPage() {
     setEditDraft({
       comboSku: isCombo ? outputProduct?.sku ?? "" : "",
       comboName: isCombo ? outputProduct?.name ?? recipe.name : "",
+      comboImageFile: null,
+      comboImageUrl: isCombo ? outputProduct?.image_url ?? "" : "",
+      comboMlLink: isCombo ? outputProduct?.ml_link ?? "" : "",
       components:
         comps.length > 0
-          ? comps.map((c) => ({
-              ean: c.product_ean ?? "",
-              sku: c.product_sku ?? "",
-              name: c.product_name ?? "",
-              quantity: String(c.quantity),
-            }))
-          : [{ ean: "", sku: "", name: "", quantity: "1" }],
+          ? comps.map((c) => {
+              const comp = productById(c.product_id);
+              return {
+                ean: c.product_ean ?? "",
+                sku: c.product_sku ?? "",
+                name: c.product_name ?? "",
+                quantity: String(c.quantity),
+                imageFile: null,
+                imageUrl: comp?.image_url ?? "",
+                mlLink: comp?.ml_link ?? "",
+              };
+            })
+          : [emptyComponentDraft()],
     });
   }
 
@@ -561,7 +702,20 @@ export default function RecetasPage() {
 
     const resolvedComponents: { product: Product; quantity: number }[] = [];
     for (const row of validRows) {
-      const { product, error: rowError } = await resolveOrCreateProduct(row.ean, row.sku, row.name);
+      let imageUrl = row.imageUrl;
+      if (row.imageFile) {
+        const { url, error: imgError } = await uploadProductImage(row.imageFile);
+        if (!url) {
+          setSavingEdit(false);
+          setEditError(imgError ?? "No se pudo subir la foto");
+          return;
+        }
+        imageUrl = url;
+      }
+      const { product, error: rowError } = await resolveOrCreateProduct(row.ean, row.sku, row.name, {
+        imageUrl,
+        mlLink: row.mlLink,
+      });
       if (!product) {
         setSavingEdit(false);
         setEditError(rowError ?? "No se pudo identificar un producto");
@@ -573,7 +727,20 @@ export default function RecetasPage() {
     let outputProduct: Product;
     let recipeName: string;
     if (isCombo) {
-      const { product, error: outputError } = await resolveOrCreateProduct("", editDraft.comboSku, editDraft.comboName);
+      let comboImageUrl = editDraft.comboImageUrl;
+      if (editDraft.comboImageFile) {
+        const { url, error: imgError } = await uploadProductImage(editDraft.comboImageFile);
+        if (!url) {
+          setSavingEdit(false);
+          setEditError(imgError ?? "No se pudo subir la foto del combo");
+          return;
+        }
+        comboImageUrl = url;
+      }
+      const { product, error: outputError } = await resolveOrCreateProduct("", editDraft.comboSku, editDraft.comboName, {
+        imageUrl: comboImageUrl,
+        mlLink: editDraft.comboMlLink,
+      });
       if (!product) {
         setSavingEdit(false);
         setEditError(outputError ?? "No se pudo identificar el producto del combo");
@@ -1063,41 +1230,63 @@ export default function RecetasPage() {
           <form onSubmit={handleCreateItem} className="space-y-3">
             <div className="space-y-2">
               {newItem.components.map((c, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2 rounded-md border border-gray-200 p-2">
-                  <input
-                    value={c.ean}
-                    onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "ean", e.target.value)}
-                    placeholder="EAN real (opcional)"
-                    className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  />
-                  <input
-                    value={c.sku}
-                    onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "sku", e.target.value)}
-                    placeholder="SKU / Código (opcional)"
-                    className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  />
-                  <input
-                    value={c.name}
-                    onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "name", e.target.value)}
-                    placeholder="Nombre del producto"
-                    className="flex-1 min-w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    value={c.quantity}
-                    onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "quantity", e.target.value)}
-                    className="w-20 rounded-md border border-gray-300 px-3 py-2 text-center text-sm"
-                  />
-                  {newItem.components.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeDraftRow(newItem, setNewItem, i)}
-                      className="text-sm text-red-600"
-                    >
-                      Quitar
-                    </button>
-                  )}
+                <div key={i} className="space-y-2 rounded-md border border-gray-200 p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={c.ean}
+                      onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "ean", e.target.value)}
+                      placeholder="EAN real (opcional)"
+                      className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <input
+                      value={c.sku}
+                      onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "sku", e.target.value)}
+                      placeholder="SKU / Código (opcional)"
+                      className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <input
+                      value={c.name}
+                      onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "name", e.target.value)}
+                      placeholder="Nombre del producto"
+                      className="flex-1 min-w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      value={c.quantity}
+                      onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "quantity", e.target.value)}
+                      className="w-20 rounded-md border border-gray-300 px-3 py-2 text-center text-sm"
+                    />
+                    {newItem.components.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeDraftRow(newItem, setNewItem, i)}
+                        className="text-sm text-red-600"
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pl-1">
+                    {c.imageUrl && (
+                      <img src={c.imageUrl} alt="" className="h-10 w-10 rounded border border-gray-200 object-cover" />
+                    )}
+                    <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600">
+                      {c.imageUrl ? "Cambiar foto" : "Subir foto (opcional)"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => updateDraftComponentImage(newItem, setNewItem, i, e.target.files?.[0] ?? null)}
+                        className="hidden"
+                      />
+                    </label>
+                    <input
+                      value={c.mlLink}
+                      onChange={(e) => updateDraftComponent(newItem, setNewItem, i, "mlLink", e.target.value)}
+                      placeholder="Link a la publicación de Mercado Libre (opcional)"
+                      className="flex-1 min-w-52 rounded-md border border-gray-300 px-3 py-1.5 text-xs"
+                    />
+                  </div>
                 </div>
               ))}
               <button
@@ -1127,6 +1316,37 @@ export default function RecetasPage() {
                     onChange={(e) => setNewItem({ ...newItem, comboName: e.target.value })}
                     placeholder="Ej: Combo Instalación Térmica Bipolar 16A + Disyuntor 40A"
                     className="w-full rounded-md border border-gray-300 px-3 py-2"
+                  />
+                </div>
+                <div className="flex w-full flex-wrap items-center gap-2">
+                  {newItem.comboImageUrl && (
+                    <img
+                      src={newItem.comboImageUrl}
+                      alt=""
+                      className="h-10 w-10 rounded border border-gray-200 object-cover"
+                    />
+                  )}
+                  <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600">
+                    {newItem.comboImageUrl ? "Cambiar foto del combo" : "Subir foto del combo (opcional)"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        setNewItem({
+                          ...newItem,
+                          comboImageFile: file,
+                          comboImageUrl: file ? URL.createObjectURL(file) : newItem.comboImageUrl,
+                        });
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                  <input
+                    value={newItem.comboMlLink}
+                    onChange={(e) => setNewItem({ ...newItem, comboMlLink: e.target.value })}
+                    placeholder="Link a la publicación del combo en Mercado Libre (opcional)"
+                    className="flex-1 min-w-52 rounded-md border border-gray-300 px-3 py-1.5 text-xs"
                   />
                 </div>
               </div>
@@ -1202,41 +1422,65 @@ export default function RecetasPage() {
                 <li key={recipe.id} className="space-y-3 px-4 py-3">
                   <div className="space-y-2">
                     {editDraft.components.map((c, i) => (
-                      <div key={i} className="flex flex-wrap items-center gap-2 rounded-md border border-gray-200 p-2">
-                        <input
-                          value={c.ean}
-                          onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "ean", e.target.value)}
-                          placeholder="EAN real (opcional)"
-                          className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        />
-                        <input
-                          value={c.sku}
-                          onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "sku", e.target.value)}
-                          placeholder="SKU / Código (opcional)"
-                          className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        />
-                        <input
-                          value={c.name}
-                          onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "name", e.target.value)}
-                          placeholder="Nombre del producto"
-                          className="flex-1 min-w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        />
-                        <input
-                          type="number"
-                          min={1}
-                          value={c.quantity}
-                          onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "quantity", e.target.value)}
-                          className="w-20 rounded-md border border-gray-300 px-3 py-2 text-center text-sm"
-                        />
-                        {editDraft.components.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeDraftRow(editDraft, setEditDraft, i)}
-                            className="text-sm text-red-600"
-                          >
-                            Quitar
-                          </button>
-                        )}
+                      <div key={i} className="space-y-2 rounded-md border border-gray-200 p-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            value={c.ean}
+                            onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "ean", e.target.value)}
+                            placeholder="EAN real (opcional)"
+                            className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          />
+                          <input
+                            value={c.sku}
+                            onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "sku", e.target.value)}
+                            placeholder="SKU / Código (opcional)"
+                            className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          />
+                          <input
+                            value={c.name}
+                            onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "name", e.target.value)}
+                            placeholder="Nombre del producto"
+                            className="flex-1 min-w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            value={c.quantity}
+                            onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "quantity", e.target.value)}
+                            className="w-20 rounded-md border border-gray-300 px-3 py-2 text-center text-sm"
+                          />
+                          {editDraft.components.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeDraftRow(editDraft, setEditDraft, i)}
+                              className="text-sm text-red-600"
+                            >
+                              Quitar
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 pl-1">
+                          {c.imageUrl && (
+                            <img src={c.imageUrl} alt="" className="h-10 w-10 rounded border border-gray-200 object-cover" />
+                          )}
+                          <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600">
+                            {c.imageUrl ? "Cambiar foto" : "Subir foto (opcional)"}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) =>
+                                updateDraftComponentImage(editDraft, setEditDraft, i, e.target.files?.[0] ?? null)
+                              }
+                              className="hidden"
+                            />
+                          </label>
+                          <input
+                            value={c.mlLink}
+                            onChange={(e) => updateDraftComponent(editDraft, setEditDraft, i, "mlLink", e.target.value)}
+                            placeholder="Link a la publicación de Mercado Libre (opcional)"
+                            className="flex-1 min-w-52 rounded-md border border-gray-300 px-3 py-1.5 text-xs"
+                          />
+                        </div>
                       </div>
                     ))}
                     <button
@@ -1264,6 +1508,37 @@ export default function RecetasPage() {
                           value={editDraft.comboName}
                           onChange={(e) => setEditDraft({ ...editDraft, comboName: e.target.value })}
                           className="w-full rounded-md border border-gray-300 px-3 py-2"
+                        />
+                      </div>
+                      <div className="flex w-full flex-wrap items-center gap-2">
+                        {editDraft.comboImageUrl && (
+                          <img
+                            src={editDraft.comboImageUrl}
+                            alt=""
+                            className="h-10 w-10 rounded border border-gray-200 object-cover"
+                          />
+                        )}
+                        <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600">
+                          {editDraft.comboImageUrl ? "Cambiar foto del combo" : "Subir foto del combo (opcional)"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] ?? null;
+                              setEditDraft({
+                                ...editDraft,
+                                comboImageFile: file,
+                                comboImageUrl: file ? URL.createObjectURL(file) : editDraft.comboImageUrl,
+                              });
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                        <input
+                          value={editDraft.comboMlLink}
+                          onChange={(e) => setEditDraft({ ...editDraft, comboMlLink: e.target.value })}
+                          placeholder="Link a la publicación del combo en Mercado Libre (opcional)"
+                          className="flex-1 min-w-52 rounded-md border border-gray-300 px-3 py-1.5 text-xs"
                         />
                       </div>
                     </div>
@@ -1299,17 +1574,37 @@ export default function RecetasPage() {
                       className="shrink-0"
                     />
                   )}
-                  <button onClick={() => toggleExpanded(recipe.id)} className="flex-1 text-left">
-                    <span className={recipe.active ? "" : "text-neutral-400 line-through"}>{recipe.name}</span>
-                    <span className="ml-2 text-sm text-neutral-500">
-                      {outputProduct
-                        ? `${outputProduct.ean ? `EAN: ${outputProduct.ean}` : ""}${
-                            outputProduct.sku ? ` · SKU: ${outputProduct.sku}` : ""
-                          }`
-                        : "sin producto final"}{" "}
-                      · {components.length} producto{components.length === 1 ? "" : "s"}
+                  <button onClick={() => toggleExpanded(recipe.id)} className="flex flex-1 items-center gap-2 text-left">
+                    {outputProduct?.image_url && (
+                      <img
+                        src={outputProduct.image_url}
+                        alt=""
+                        className="h-8 w-8 shrink-0 rounded border border-gray-200 object-cover"
+                      />
+                    )}
+                    <span>
+                      <span className={recipe.active ? "" : "text-neutral-400 line-through"}>{recipe.name}</span>
+                      <span className="ml-2 text-sm text-neutral-500">
+                        {outputProduct
+                          ? `${outputProduct.ean ? `EAN: ${outputProduct.ean}` : ""}${
+                              outputProduct.sku ? ` · SKU: ${outputProduct.sku}` : ""
+                            }`
+                          : "sin producto final"}{" "}
+                        · {components.length} producto{components.length === 1 ? "" : "s"}
+                      </span>
                     </span>
                   </button>
+                  {outputProduct?.ml_link && (
+                    <a
+                      href={outputProduct.ml_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="shrink-0 text-sm text-blue-600 underline"
+                    >
+                      Ver publicación
+                    </a>
+                  )}
                   {outputProduct && defaultLocationId && (
                     <div
                       className="flex shrink-0 items-center gap-1.5"
@@ -1353,18 +1648,42 @@ export default function RecetasPage() {
 
                 {isExpanded && (
                   <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2">
-                    {components.map((c) => (
-                      <li key={c.id} className="flex justify-between text-sm text-neutral-600">
-                        <span>
-                          {c.product_name}{" "}
-                          <span className="text-neutral-400">
-                            (EAN: {c.product_ean}
-                            {c.product_sku ? ` · SKU: ${c.product_sku}` : ""})
+                    {components.map((c) => {
+                      const compProduct = productById(c.product_id);
+                      return (
+                        <li key={c.id} className="flex items-center justify-between gap-2 text-sm text-neutral-600">
+                          <span className="flex items-center gap-2">
+                            {compProduct?.image_url && (
+                              <img
+                                src={compProduct.image_url}
+                                alt=""
+                                className="h-7 w-7 shrink-0 rounded border border-gray-200 object-cover"
+                              />
+                            )}
+                            <span>
+                              {c.product_name}{" "}
+                              <span className="text-neutral-400">
+                                (EAN: {c.product_ean}
+                                {c.product_sku ? ` · SKU: ${c.product_sku}` : ""})
+                              </span>
+                            </span>
                           </span>
-                        </span>
-                        <span>x{c.quantity}</span>
-                      </li>
-                    ))}
+                          <span className="flex shrink-0 items-center gap-2">
+                            {compProduct?.ml_link && (
+                              <a
+                                href={compProduct.ml_link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-600 underline"
+                              >
+                                Ver publicación
+                              </a>
+                            )}
+                            <span>x{c.quantity}</span>
+                          </span>
+                        </li>
+                      );
+                    })}
                     {components.length === 0 && <li className="text-sm text-neutral-400">Sin componentes cargados.</li>}
                   </ul>
                 )}

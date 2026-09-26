@@ -35,6 +35,16 @@ export default function ArmadoPage() {
   const [components, setComponents] = useState<ComponentProgress[]>([]);
   const [scannedLog, setScannedLog] = useState<ScannedComponent[]>([]);
 
+  // Foto y link a la publicación de Mercado Libre de cada producto (el
+  // final de la receta y cada componente) — para que el operario pueda
+  // verificar por imagen o abriendo la publicación si tiene dudas al
+  // escanear, sin salir de esta pantalla. Se cargan por id de producto
+  // recién al abrir una receta (no hace falta traer todo el catálogo acá).
+  const [productInfo, setProductInfo] = useState<
+    Record<string, { image_url: string | null; ml_link: string | null }>
+  >({});
+  const [expandedProductInfo, setExpandedProductInfo] = useState<string | null>(null);
+
   // Progreso de la receta actual (requerido / completado)
   const [required, setRequired] = useState(0);
   const [completed, setCompleted] = useState(0);
@@ -174,6 +184,27 @@ export default function ArmadoPage() {
     setScannedLog([]);
     setRequired(0);
     setCompleted(0);
+    setProductInfo({});
+    setExpandedProductInfo(null);
+  }
+
+  // Trae foto/link de Mercado Libre del producto final y de cada componente
+  // de la receta recién abierta. Se hace en una sola consulta por los ids
+  // que hagan falta (nunca se trae el catálogo entero).
+  async function loadProductInfo(outputProductId: string | null, comps: RecipeComponent[]) {
+    const ids = Array.from(
+      new Set([outputProductId, ...comps.map((c) => c.product_id)].filter((id): id is string => !!id))
+    );
+    if (ids.length === 0) {
+      setProductInfo({});
+      return;
+    }
+    const { data } = await supabase.from("products").select("id, image_url, ml_link").in("id", ids);
+    const map: Record<string, { image_url: string | null; ml_link: string | null }> = {};
+    (data ?? []).forEach((p: any) => {
+      map[p.id] = { image_url: p.image_url ?? null, ml_link: p.ml_link ?? null };
+    });
+    setProductInfo(map);
   }
 
   async function loadProgress(itemId: string) {
@@ -249,6 +280,7 @@ export default function ArmadoPage() {
     setShipmentItemId(itemData.id);
     setComponents(components.map((c) => ({ ...c, scannedCount: 0 })));
     setScannedLog([]);
+    await loadProductInfo(recipeData.output_product_id, components);
     await loadProgress(itemData.id);
 
     setLoading(false);
@@ -590,63 +622,138 @@ export default function ArmadoPage() {
         {/* Receta en curso */}
         {recipe && (
           <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="font-medium">{recipe.name}</h2>
-              <span className="text-sm text-neutral-500">
-                Avance: {completed}/{required}
-              </span>
+              <div className="flex items-center gap-3">
+                {(productInfo[recipe.output_product_id ?? ""]?.image_url ||
+                  productInfo[recipe.output_product_id ?? ""]?.ml_link) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedProductInfo((prev) => (prev === "output" ? null : "output"))
+                    }
+                    className="text-sm text-blue-600 underline"
+                  >
+                    Ver foto / publicación
+                  </button>
+                )}
+                <span className="text-sm text-neutral-500">
+                  Avance: {completed}/{required}
+                </span>
+              </div>
             </div>
 
+            {expandedProductInfo === "output" && recipe.output_product_id && (
+              <div className="flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-gray-50 p-2">
+                {productInfo[recipe.output_product_id]?.image_url && (
+                  <img
+                    src={productInfo[recipe.output_product_id]!.image_url!}
+                    alt=""
+                    className="h-20 w-20 rounded border border-gray-200 object-cover"
+                  />
+                )}
+                {productInfo[recipe.output_product_id]?.ml_link && (
+                  <a
+                    href={productInfo[recipe.output_product_id]!.ml_link!}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-blue-600 underline"
+                  >
+                    Abrir publicación en Mercado Libre
+                  </a>
+                )}
+              </div>
+            )}
+
             <ul className="space-y-1">
-              {components.map((c) => (
-                <li
-                  key={c.id}
-                  className={`flex items-center justify-between rounded px-3 py-2 text-sm ${
-                    c.scannedCount >= c.quantity
-                      ? "bg-green-50 text-green-700"
-                      : "bg-gray-100 text-neutral-700"
-                  }`}
-                >
-                  <span className="flex flex-wrap items-center gap-1">
-                    {c.product_name}
-                    <span className="text-neutral-400">(EAN:</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyCode(c.product_ean);
-                      }}
-                      title="Tocá para copiar el EAN"
-                      className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 font-mono text-xs text-neutral-700 hover:border-neutral-500 hover:bg-neutral-50"
-                    >
-                      {c.product_ean}
-                    </button>
-                    {c.product_sku && (
-                      <>
-                        <span className="text-neutral-400">· SKU:</span>
+              {components.map((c) => {
+                const info = c.product_id ? productInfo[c.product_id] : undefined;
+                const hasInfo = !!(info?.image_url || info?.ml_link);
+                return (
+                  <li
+                    key={c.id}
+                    className={`rounded px-3 py-2 text-sm ${
+                      c.scannedCount >= c.quantity
+                        ? "bg-green-50 text-green-700"
+                        : "bg-gray-100 text-neutral-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="flex flex-wrap items-center gap-1">
+                        {c.product_name}
+                        <span className="text-neutral-400">(EAN:</span>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            copyCode(c.product_sku!);
+                            copyCode(c.product_ean);
                           }}
-                          title="Tocá para copiar el SKU"
+                          title="Tocá para copiar el EAN"
                           className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 font-mono text-xs text-neutral-700 hover:border-neutral-500 hover:bg-neutral-50"
                         >
-                          {c.product_sku}
+                          {c.product_ean}
                         </button>
-                      </>
+                        {c.product_sku && (
+                          <>
+                            <span className="text-neutral-400">· SKU:</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyCode(c.product_sku!);
+                              }}
+                              title="Tocá para copiar el SKU"
+                              className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 font-mono text-xs text-neutral-700 hover:border-neutral-500 hover:bg-neutral-50"
+                            >
+                              {c.product_sku}
+                            </button>
+                          </>
+                        )}
+                        <span className="text-neutral-400">)</span>
+                        {(copiedCode === c.product_ean || (c.product_sku && copiedCode === c.product_sku)) && (
+                          <span className="font-semibold text-green-600">¡Copiado!</span>
+                        )}
+                        {hasInfo && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedProductInfo((prev) => (prev === c.id ? null : c.id));
+                            }}
+                            className="text-blue-600 underline"
+                          >
+                            Ver foto/publicación
+                          </button>
+                        )}
+                      </span>
+                      <span>
+                        {c.scannedCount}/{c.quantity}
+                      </span>
+                    </div>
+                    {expandedProductInfo === c.id && (
+                      <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-white p-2">
+                        {info?.image_url && (
+                          <img
+                            src={info.image_url}
+                            alt=""
+                            className="h-16 w-16 rounded border border-gray-200 object-cover"
+                          />
+                        )}
+                        {info?.ml_link && (
+                          <a
+                            href={info.ml_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm text-blue-600 underline"
+                          >
+                            Abrir publicación en Mercado Libre
+                          </a>
+                        )}
+                      </div>
                     )}
-                    <span className="text-neutral-400">)</span>
-                    {(copiedCode === c.product_ean || (c.product_sku && copiedCode === c.product_sku)) && (
-                      <span className="font-semibold text-green-600">¡Copiado!</span>
-                    )}
-                  </span>
-                  <span>
-                    {c.scannedCount}/{c.quantity}
-                  </span>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
