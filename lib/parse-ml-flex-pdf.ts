@@ -59,7 +59,21 @@ type ColumnLine = { text: string; order: number };
 const Y_TOLERANCE = 3; // puntos de PDF: fragmentos con esta diferencia de alto o menos se consideran la misma línea
 const PAGE_ORDER_SPAN = 1_000_000; // hueco amplio de sobra por página para poder ordenar todo el documento de corrido
 
-const ID_LINE = /^(\d{8,13})$/;
+// El código de "Identificación" (el número/código en negrita que identifica
+// el paquete) NO siempre es un número de 8 a 13 dígitos: según el correo/
+// modalidad de envío, Mercado Libre también usa números más largos (por
+// ejemplo 15 dígitos) o códigos alfanuméricos de Andreani de hasta 26
+// caracteres, todos en mayúsculas (ej: "OFQJH2BZZ5NUFMJKEYSB4UAGRU",
+// "8P2Z4BXB"). Con la regla vieja (solo dígitos, 8 a 13) ninguno de esos
+// formatos entraba y el import fallaba con "No se pudo reconocer ninguna
+// venta en el PDF" aunque el documento fuera válido — encontrado con un
+// Control.pdf real de despachos por Andreani. Los nombres de comprador no
+// entran en este patrón porque van con espacios y minúsculas, así que
+// ampliar esto no genera falsos positivos.
+// OJO: el grupo entre paréntesis es necesario — más abajo se lee
+// idMatch[1] para sacar el código en sí, no solo para confirmar que la
+// línea "tiene forma de" identificación.
+const ID_LINE = /^([A-Z0-9]{6,30})$/;
 const PACK_ID_LINE = /^Pack ID:\s*(\d+)/i;
 const VENTA_LINE = /^Venta:\s*(\d+)/i;
 const SKU_LINE = /^SKU:\s*(.+)/i;
@@ -298,9 +312,22 @@ function parseProductos(lines: ColumnLine[]): ProductoEntry[] {
 }
 
 export async function parseMercadoLibreFlexPdf(pdf: any): Promise<ParsedFlexPdf> {
-  const { left, right } = await extractColumns(pdf);
+  let { left, right } = await extractColumns(pdf);
+  let identificaciones = parseIdentificaciones(left);
 
-  const identificaciones = parseIdentificaciones(left);
+  // Encontrado con un Control.pdf real: a veces esta PRIMERA lectura del
+  // documento recién abierto vuelve vacía o incompleta (0 identificaciones),
+  // aunque el PDF sea perfectamente válido — el diagnóstico de más abajo
+  // (que vuelve a leer el mismo documento desde cero) sí traía todo el
+  // texto bien. No se pudo confirmar la causa exacta (parece que a veces la
+  // librería de PDF no llega a resolver todas las fuentes/glifos a tiempo
+  // en esa primera lectura), pero alcanza con reintentar una vez antes de
+  // darnos por vencidos.
+  if (identificaciones.length === 0) {
+    ({ left, right } = await extractColumns(pdf));
+    identificaciones = parseIdentificaciones(left);
+  }
+
   const productos = parseProductos(right);
 
   const warnings: string[] = [];
