@@ -1652,7 +1652,7 @@ export default function RecetasPage() {
                         alt=""
                         onClick={(e) => {
                           e.stopPropagation();
-                          setZoomedImage(outputProduct.image_url);
+                          setZoomedImage(outputProduct!.image_url!);
                         }}
                         className="h-8 w-8 shrink-0 cursor-zoom-in rounded border border-gray-200 object-cover"
                       />
@@ -1732,7 +1732,7 @@ export default function RecetasPage() {
                               <img
                                 src={compProduct.image_url}
                                 alt=""
-                                onClick={() => setZoomedImage(compProduct.image_url)}
+                                onClick={() => setZoomedImage(compProduct!.image_url!)}
                                 className="h-7 w-7 shrink-0 cursor-zoom-in rounded border border-gray-200 object-cover"
                               />
                             )}
