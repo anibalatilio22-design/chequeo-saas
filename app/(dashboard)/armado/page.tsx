@@ -17,6 +17,15 @@ type Feedback = { type: "ok" | "error"; message: string } | null;
 
 type ComponentProgress = RecipeComponent & { scannedCount: number };
 
+// Full, Flex y Colecta son tres tipos de envío independientes entre sí (cada
+// uno con su propio envío abierto, su propio progreso) — este helper es solo
+// para mostrar el nombre lindo en pantalla.
+function shipmentTypeLabel(t: ShipmentType): string {
+  if (t === "full") return "Full";
+  if (t === "flex") return "Flex";
+  return "Colecta";
+}
+
 export default function ArmadoPage() {
   const [supabase] = useState(() => createClient());
 
@@ -183,12 +192,13 @@ export default function ArmadoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipmentType, shipments]);
 
-  // Traer los paquetes del envío Flex/Colecta activo, para el buscador
-  // manual (ver FlexPackOption más arriba). Solo hace falta para este tipo
-  // de envío — Full no tiene paquetes, se sigue armando solo por escaneo.
+  // Traer los paquetes del envío Flex o Colecta activo, para el buscador
+  // manual (ver FlexPackOption más arriba). Solo hace falta para estos dos
+  // tipos de envío — Full no tiene paquetes, se sigue armando solo por
+  // escaneo.
   useEffect(() => {
     setPackSearchQuery("");
-    if (shipmentType !== "flex" || !shipmentId) {
+    if ((shipmentType !== "flex" && shipmentType !== "colecta") || !shipmentId) {
       setFlexPackOptions([]);
       return;
     }
@@ -557,15 +567,14 @@ export default function ArmadoPage() {
       <div className="mx-auto max-w-2xl space-y-6">
         <h1 className="text-xl font-semibold">Chequeo de armado</h1>
 
-        {/* Selector de tipo de envío (Full / Flex / Colecta) */}
+        {/* Selector de tipo de envío (Full / Flex / Colecta) — cada uno
+            trabaja sobre su propio envío abierto, de forma independiente,
+            así que varios operarios pueden estar armando Full, Flex y
+            Colecta al mismo tiempo sin pisarse. */}
         <div className="space-y-1">
           <label className="text-sm text-neutral-500">Tipo de envío</label>
           <div className="flex gap-2">
-            {/* Flex y Colecta se unificaron en un solo botón: el remito y la
-                etiqueta son prácticamente iguales (la única diferencia es
-                QR vs. código de barras, y el mismo lector lee los dos), así
-                que no tiene sentido manejarlos como envíos separados. */}
-            {(["full", "flex"] as ShipmentType[]).map((t) => (
+            {(["full", "flex", "colecta"] as ShipmentType[]).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -576,14 +585,14 @@ export default function ArmadoPage() {
                     : "border-gray-300 bg-white text-neutral-600"
                 }`}
               >
-                {t === "flex" ? "Flex / Colecta" : "Full"}
+                {shipmentTypeLabel(t)}
               </button>
             ))}
           </div>
 
           {matchingShipments.length === 0 && (
             <p className="text-sm text-red-600">
-              No hay ningún envío abierto de tipo {shipmentType}.
+              No hay ningún envío abierto de tipo {shipmentTypeLabel(shipmentType)}.
             </p>
           )}
           {matchingShipments.length === 1 && (
@@ -631,12 +640,12 @@ export default function ArmadoPage() {
         )}
 
         {/* Buscador manual de paquetes — alternativa a escanear la etiqueta,
-            solo para Flex/Colecta y solo antes de empezar a armar un
+            solo para Flex o Colecta y solo antes de empezar a armar un
             paquete puntual (una vez adentro de uno, se sigue escaneando
             componentes como siempre). Matchea contra la Identificación, el
             Pack ID, la Venta o el nombre del cliente — lo que sea que el
             operario tenga a mano en el paquete. */}
-        {shipmentType === "flex" && !shipmentItemId && (
+        {(shipmentType === "flex" || shipmentType === "colecta") && !shipmentItemId && (
           <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
             <label className="text-sm text-neutral-500">
               Buscar paquete (Identificación, Pack ID, Venta o nombre del cliente)

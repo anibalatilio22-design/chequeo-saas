@@ -38,6 +38,15 @@ type PreviewFlexPack = Omit<ParsedFlexPack, "products"> & {
   allMatched: boolean;
 };
 
+// Full, Flex y Colecta son tres tipos de envío independientes entre sí (cada
+// uno con su propio envío abierto, su propio progreso y su propio remito) —
+// este helper es solo para mostrar el nombre lindo en pantalla.
+function shipmentTypeLabel(t: ShipmentType): string {
+  if (t === "full") return "Full";
+  if (t === "flex") return "Flex";
+  return "Colecta";
+}
+
 export default function EnviosPage() {
   const [supabase] = useState(() => createClient());
   const [isAdmin, setIsAdmin] = useState(false);
@@ -79,9 +88,10 @@ export default function EnviosPage() {
     productos: FlexDebugLine[];
   } | null>(null);
   const [flexShipmentCode, setFlexShipmentCode] = useState("");
-  // Ya no se elige (Flex y Colecta se unificaron, ver más abajo) — queda
-  // fijo en "flex" para toda importación de este tipo de documento.
-  const [flexShipmentType] = useState<ShipmentType>("flex");
+  // El documento en sí no dice si es un lote de Flex o de Colecta (son
+  // idénticos), así que lo elige el admin antes de subir el PDF — ver el
+  // selector más abajo, junto al botón de elegir archivo.
+  const [flexShipmentType, setFlexShipmentType] = useState<ShipmentType>("flex");
   const [flexImporting, setFlexImporting] = useState(false);
   const [flexImportResult, setFlexImportResult] = useState<string | null>(null);
 
@@ -548,7 +558,7 @@ export default function EnviosPage() {
         .insert({
           company_id: companyId,
           label_ean: `${FLEXPACK_LABEL_PREFIX}${pack.itemId}`,
-          name: `Flex/Colecta — ${pack.buyerName || pack.itemId}`,
+          name: `${shipmentTypeLabel(flexShipmentType)} — ${pack.buyerName || pack.itemId}`,
           active: true,
           output_product_id: null,
           // Se guardan por separado (además de ir mezclados en "name" de
@@ -783,7 +793,8 @@ export default function EnviosPage() {
                     className="rounded-md border border-gray-300 px-3 py-2"
                   >
                     <option value="full">Full</option>
-                    <option value="flex">Flex / Colecta</option>
+                    <option value="flex">Flex</option>
+                    <option value="colecta">Colecta</option>
                   </select>
                 </div>
               </div>
@@ -966,11 +977,32 @@ export default function EnviosPage() {
             ese paquete entero queda afuera — el resto del lote se importa igual.
           </p>
 
-          {/* Flex y Colecta se unificaron en un solo tipo ("flex") — el
-              remito y la etiqueta son prácticamente iguales (la única
-              diferencia es QR vs. código de barras, y el mismo lector lee
-              los dos), así que no hace falta que el admin elija entre las
-              dos cada vez que importa un lote. */}
+          {/* El PDF de "Identificación / Productos" es idéntico para Flex y
+              para Colecta — el documento no dice cuál es, así que lo elige
+              el admin acá antes de subirlo. El envío que se cree va a quedar
+              cargado con ese tipo, y de ahí en más Armado, Progreso y el
+              remito lo tratan como un envío de ese tipo, totalmente aparte
+              del otro. */}
+          <div className="space-y-1">
+            <label className="text-sm text-neutral-500">Tipo de envío de este PDF</label>
+            <div className="flex gap-2 sm:w-64">
+              {(["flex", "colecta"] as ShipmentType[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setFlexShipmentType(t)}
+                  className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
+                    flexShipmentType === t
+                      ? "border-yellow-500 bg-yellow-100 text-neutral-900"
+                      : "border-gray-300 bg-white text-neutral-600"
+                  }`}
+                >
+                  {shipmentTypeLabel(t)}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <input type="file" accept=".pdf" onChange={handleFlexPdfFile} className="text-sm" />
 
           {flexParsing && <p className="text-sm text-neutral-500">Leyendo el PDF...</p>}
@@ -1077,7 +1109,7 @@ export default function EnviosPage() {
         <h2 className="text-lg font-medium">Envíos</h2>
 
         <div className="flex gap-2">
-          {(["full", "flex"] as ShipmentType[]).map((t) => (
+          {(["full", "flex", "colecta"] as ShipmentType[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -1091,7 +1123,7 @@ export default function EnviosPage() {
                   : "border-gray-300 bg-white text-neutral-600"
               }`}
             >
-              {t === "flex" ? "Flex / Colecta" : "Full"}
+              {shipmentTypeLabel(t)}
             </button>
           ))}
         </div>
@@ -1108,9 +1140,7 @@ export default function EnviosPage() {
         />
 
         {(() => {
-          const visibleShipments = shipments.filter((s) =>
-            listShipmentType === "full" ? s.type === "full" : s.type !== "full"
-          );
+          const visibleShipments = shipments.filter((s) => s.type === listShipmentType);
           const searching = listSearchQuery.trim().length > 0;
           return (
             <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200">
@@ -1204,7 +1234,7 @@ export default function EnviosPage() {
               })}
               {visibleShipments.length === 0 && (
                 <li className="px-4 py-3 text-sm text-neutral-500">
-                  Todavía no hay envíos de tipo {listShipmentType === "full" ? "Full" : "Flex / Colecta"}.
+                  Todavía no hay envíos de tipo {shipmentTypeLabel(listShipmentType)}.
                 </li>
               )}
             </ul>

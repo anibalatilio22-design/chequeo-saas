@@ -64,6 +64,15 @@ function formatOperarioGroupLine(g: OperarioGroup): string {
   return `${g.operator_name} — puesto: ${g.workstation_name} — ${g.count} un. — ${when}`;
 }
 
+// Full, Flex y Colecta son tres tipos de envío independientes entre sí (cada
+// uno con su propio envío abierto, su propio progreso y su propio remito) —
+// este helper es solo para mostrar el nombre lindo en pantalla.
+function shipmentTypeLabel(t: ShipmentType): string {
+  if (t === "full") return "Full";
+  if (t === "flex") return "Flex";
+  return "Colecta";
+}
+
 export default function ProgresoPage() {
   const [supabase] = useState(() => createClient());
 
@@ -79,8 +88,9 @@ export default function ProgresoPage() {
   const [completionsByItem, setCompletionsByItem] = useState<Record<string, CompletionRow[]>>({});
 
   // Items de TODOS los envíos (no solo el elegido arriba) — hace falta para
-  // poder armar el resumen de "Pendientes/Armados/Total" de Full y de
-  // Flex/Colecta juntos, sin importar cuál esté seleccionado en este momento.
+  // poder armar el resumen de "Pendientes/Armados/Total" de los tres tipos
+  // (Full, Flex, Colecta) por separado, sin importar cuál esté seleccionado
+  // en este momento.
   const [itemsByShipment, setItemsByShipment] = useState<Record<string, ShipmentProgress[]>>({});
 
   async function loadShipmentItems(id: string) {
@@ -132,8 +142,8 @@ export default function ProgresoPage() {
       .select("*")
       .order("created_at", { ascending: false });
     setShipments(data ?? []);
-    // Para el resumen de Pendientes/Armados/Total de Full y Flex/Colecta,
-    // que se muestra siempre arriba de todo, sin importar el envío elegido.
+    // Para el resumen de Pendientes/Armados/Total de cada tipo, que se
+    // muestra siempre arriba de todo, sin importar el envío elegido.
     ((data ?? []) as { id: string }[]).forEach((s) => loadShipmentItems(s.id));
   }
 
@@ -239,15 +249,26 @@ export default function ProgresoPage() {
     }
   }
 
-  // El remito solo se puede generar cuando el envío está armado del todo —
-  // así lo pidió el usuario, para no despachar algo a medio chequear.
+  // Full se despacha como un lote cerrado: el remito solo se puede generar
+  // cuando el envío está armado del todo. Flex y Colecta en cambio se
+  // despachan de forma continua durante el día (no tiene sentido esperar a
+  // que el último paquete esté listo para poder imprimir los que ya lo
+  // están), así que para esos dos alcanza con que haya al menos un paquete
+  // completo — el remito se arma solo con los que ya están, y se puede
+  // volver a generar más tarde para sumar los que se completaron después.
   const allComplete =
     progress.length > 0 && progress.every((p) => p.quantity_completed >= p.quantity_required);
+  const completedProgress = progress.filter((p) => p.quantity_completed >= p.quantity_required);
+  const isFullType = shipmentType === "full";
+  const canGenerateRemito = isFullType ? allComplete : completedProgress.length > 0;
+  const isPartialRemito = !isFullType && completedProgress.length < progress.length;
 
   // Arma y descarga el PDF del remito de despacho, entero en el navegador
   // (no hace falta ningún servidor nuevo para esto). Por cada producto/combo
   // trae la cantidad armada, y por cada armado individual quién lo hizo, en
   // qué puesto y a qué hora — para poder rastrear un error por las cámaras.
+  // Para Flex/Colecta, si el envío todavía no está completo del todo, solo
+  // se incluyen los paquetes que YA están armados (ver canGenerateRemito).
   //
   // El objeto del PDF (jsPDF) se castea a "any": es una librería nueva que
   // no se puede instalar/probar en este entorno antes de subir el código,
@@ -255,15 +276,18 @@ export default function ProgresoPage() {
   // fallar la compilación real en Vercel (mismo motivo por el que se
   // castean las consultas de Supabase en el resto de la app).
   async function generateRemito() {
-    if (!shipmentId || !allComplete) return;
+    if (!shipmentId || !canGenerateRemito) return;
     const shipment = shipments.find((s) => s.id === shipmentId);
     if (!shipment) return;
+
+    const rowsToInclude = isFullType ? progress : completedProgress;
+    const partial = isPartialRemito;
 
     setGeneratingRemito(true);
     setRemitoError(null);
 
     try {
-      const itemIds = progress.map((p) => p.shipment_item_id);
+      const itemIds = rowsToInclude.map((p) => p.shipment_item_id);
       const { data: completionsData, error: completionsError } = await supabase
         .from("completions")
         .select("id, shipment_item_id, completed_at, operators(full_name), workstations(name)")
@@ -391,18 +415,29 @@ export default function ProgresoPage() {
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text("Remito de despacho", marginX, y);
+      doc.text(partial ? "Remito de despacho (parcial)" : "Remito de despacho", marginX, y);
       y += 7;
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.text(`Envío: ${shipment.code}`, marginX, y);
-      doc.text(`Tipo: ${shipment.type === "flex" ? "Flex / Colecta" : "Full"}`, pageWidth - marginX, y, {
+      doc.text(`Tipo: ${shipmentTypeLabel(shipment.type)}`, pageWidth - marginX, y, {
         align: "right",
       });
       y += 6;
       doc.text(`Generado: ${new Date().toLocaleString("es-AR")}`, marginX, y);
-      y += 10;
+      y += 6;
+      if (partial) {
+        doc.setTextColor(180, 100, 0);
+        doc.text(
+          `Incluye ${rowsToInclude.length} de ${progress.length} paquetes — el resto todavía se está armando.`,
+          marginX,
+          y
+        );
+        doc.setTextColor(0);
+        y += 6;
+      }
+      y += 4;
 
       // Tabla del remito: Producto | Cantidad armada | Quién lo armó.
       // La columna "Armado por" va agrupada por operario+puesto (no una
@@ -442,7 +477,7 @@ export default function ProgresoPage() {
 
       drawTableHeader();
 
-      for (const p of progress) {
+      for (const p of rowsToInclude) {
         const productLines = doc.splitTextToSize(p.recipe_name, col1W - 2);
         const detail = completionsByItemId.get(p.shipment_item_id) ?? [];
         const groups = groupCompletionsByOperario(detail);
@@ -482,7 +517,7 @@ export default function ProgresoPage() {
       doc.setFontSize(9);
       doc.text("Firma", marginX, y);
 
-      doc.save(`remito-${shipment.code}.pdf`);
+      doc.save(`remito-${shipment.code}${partial ? "-parcial" : ""}.pdf`);
     } catch (err: any) {
       setRemitoError(`No se pudo generar el remito: ${err?.message ?? "error desconocido"}`);
     }
@@ -490,9 +525,9 @@ export default function ProgresoPage() {
     setGeneratingRemito(false);
   }
 
-  // Resumen de pedidos a preparar, separado por Full y Flex/Colecta — cuenta
-  // los items (cada línea/paquete a armar) de los envíos ABIERTOS nada más,
-  // sin importar cuál esté elegido arriba en el selector.
+  // Resumen de pedidos a preparar, separado por tipo — cuenta los items
+  // (cada línea/paquete a armar) de los envíos ABIERTOS nada más, sin
+  // importar cuál esté elegido arriba en el selector.
   function pedidosStatsFor(types: Array<(typeof shipments)[number]["type"]>) {
     const items = shipments
       .filter((s) => s.status === "open" && types.includes(s.type))
@@ -502,10 +537,12 @@ export default function ProgresoPage() {
     return { pendientes: total - armados, armados, total };
   }
   const pedidosFull = pedidosStatsFor(["full"]);
-  const pedidosFlexColecta = pedidosStatsFor(["flex", "colecta"]);
+  const pedidosFlex = pedidosStatsFor(["flex"]);
+  const pedidosColecta = pedidosStatsFor(["colecta"]);
   // El resumen que se muestra depende de qué tipo está elegido arriba, para
-  // que quede adentro de esa misma sección en vez de mostrar los dos juntos.
-  const pedidosDelTipoElegido = shipmentType === "full" ? pedidosFull : pedidosFlexColecta;
+  // que quede adentro de esa misma sección en vez de mostrar los tres juntos.
+  const pedidosDelTipoElegido =
+    shipmentType === "full" ? pedidosFull : shipmentType === "flex" ? pedidosFlex : pedidosColecta;
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
@@ -514,10 +551,10 @@ export default function ProgresoPage() {
       <div className="space-y-1">
         <label className="text-sm text-neutral-500">Tipo de envío</label>
         <div className="flex gap-2">
-          {/* Flex y Colecta se unificaron en un solo botón (mismo motivo que
-              en Armado): el remito y la etiqueta son prácticamente iguales,
-              la única diferencia es QR vs. código de barras. */}
-          {(["full", "flex"] as ShipmentType[]).map((t) => (
+          {/* Full, Flex y Colecta trabajan de forma independiente — cada uno
+              con su propio envío abierto, su propio progreso y su propio
+              remito. */}
+          {(["full", "flex", "colecta"] as ShipmentType[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -528,7 +565,7 @@ export default function ProgresoPage() {
                   : "border-gray-300 bg-white text-neutral-600"
               }`}
             >
-              {t === "flex" ? "Flex / Colecta" : "Full"}
+              {shipmentTypeLabel(t)}
             </button>
           ))}
         </div>
@@ -551,7 +588,9 @@ export default function ProgresoPage() {
         </div>
 
         {matchingShipments.length === 0 && (
-          <p className="text-sm text-red-600">No hay ningún envío de tipo {shipmentType} todavía.</p>
+          <p className="text-sm text-red-600">
+            No hay ningún envío de tipo {shipmentTypeLabel(shipmentType)} todavía.
+          </p>
         )}
         {matchingShipments.length === 1 && (
           <p className="text-sm text-neutral-500">
@@ -579,17 +618,29 @@ export default function ProgresoPage() {
         )}
       </div>
 
-      {shipmentId && allComplete && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-green-300 bg-green-50 p-4">
-          <p className="text-sm text-green-800">
-            Este envío está completo — ya se puede generar el remito de despacho.
+      {shipmentId && canGenerateRemito && (
+        <div
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 ${
+            isPartialRemito ? "border-blue-300 bg-blue-50" : "border-green-300 bg-green-50"
+          }`}
+        >
+          <p className={`text-sm ${isPartialRemito ? "text-blue-800" : "text-green-800"}`}>
+            {isPartialRemito
+              ? `Hay ${completedProgress.length} de ${progress.length} paquetes armados — se puede descargar el remito con esos, y volver a generarlo más tarde para sumar el resto.`
+              : "Este envío está completo — ya se puede generar el remito de despacho."}
           </p>
           <button
             onClick={generateRemito}
             disabled={generatingRemito}
-            className="shrink-0 rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className={`shrink-0 rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${
+              isPartialRemito ? "bg-blue-600" : "bg-green-600"
+            }`}
           >
-            {generatingRemito ? "Generando..." : "Generar remito de despacho"}
+            {generatingRemito
+              ? "Generando..."
+              : isPartialRemito
+              ? `Generar remito parcial (${completedProgress.length})`
+              : "Generar remito de despacho"}
           </button>
         </div>
       )}
