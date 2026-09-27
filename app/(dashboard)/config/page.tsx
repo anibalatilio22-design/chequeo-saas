@@ -18,6 +18,7 @@ export default function ConfigPage() {
   // Perfil de la empresa
   const [company, setCompany] = useState<Company | null>(null);
   const [companyName, setCompanyName] = useState("");
+  const [companyLegalName, setCompanyLegalName] = useState("");
   const [companyAddress, setCompanyAddress] = useState("");
   const [companyPhone, setCompanyPhone] = useState("");
   const [companyError, setCompanyError] = useState<string | null>(null);
@@ -79,6 +80,7 @@ export default function ConfigPage() {
     if (companyData) {
       setCompany(companyData);
       setCompanyName(companyData.name ?? "");
+      setCompanyLegalName(companyData.legal_name ?? "");
       setCompanyAddress(companyData.address ?? "");
       setCompanyPhone(companyData.phone ?? "");
     }
@@ -115,6 +117,7 @@ export default function ConfigPage() {
     const { error } = await (supabase.from("companies") as any)
       .update({
         name: companyName.trim(),
+        legal_name: companyLegalName.trim() || null,
         address: companyAddress.trim() || null,
         phone: companyPhone.trim() || null,
       })
@@ -379,6 +382,15 @@ export default function ConfigPage() {
             <input
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm text-neutral-500">Razón social</label>
+            <input
+              value={companyLegalName}
+              onChange={(e) => setCompanyLegalName(e.target.value)}
+              placeholder="Ej: Comercial Eléctrica S.R.L."
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2"
             />
           </div>

@@ -371,6 +371,10 @@ export default function ProgresoPage() {
       y += 6;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
+      if (company?.legal_name) {
+        doc.text(company.legal_name, textX, y);
+        y += 5;
+      }
       if (company?.address) {
         doc.text(company.address, textX, y);
         y += 5;

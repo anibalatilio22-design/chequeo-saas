@@ -10,6 +10,7 @@ export interface Company {
   id: string;
   name: string;
   slug: string;
+  legal_name: string | null;
   address: string | null;
   phone: string | null;
   logo_url: string | null;

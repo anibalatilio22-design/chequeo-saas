@@ -53,21 +53,22 @@ export default function NavBar({
   return (
     <header className="bg-yellow-400 shadow-sm">
       <div className="flex h-24 items-stretch justify-between">
-        {/* Izquierda: logo de la empresa (el que se sube desde Configuración),
-            en su propio espacio con fondo blanco (para que no quede flotando
-            directo sobre el amarillo), pegado al borde y ocupando el alto de
-            la barra. */}
+        {/* Izquierda: logo de la empresa (el que se sube desde Configuración)
+            junto con su nombre, en su propio espacio con fondo blanco (para
+            que no quede flotando directo sobre el amarillo), pegado al borde
+            y ocupando el alto de la barra. */}
         {(logoUrl || companyName) && (
-          <div className="my-1 flex shrink-0 items-center rounded-xl bg-white shadow-sm">
-            {logoUrl ? (
+          <div className="my-1 flex shrink-0 items-center gap-2 rounded-xl bg-white px-3 py-0.5 shadow-sm">
+            {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={logoUrl}
                 alt={companyName ? `Logo de ${companyName}` : "Logo de la empresa"}
-                className="h-full w-auto max-w-[280px] object-contain px-3 py-0.5"
+                className="h-full w-auto max-w-[220px] object-contain"
               />
-            ) : (
-              <span className="flex items-center px-3 text-lg font-semibold text-neutral-900">
+            )}
+            {companyName && (
+              <span className="max-w-[160px] truncate text-sm font-semibold text-neutral-900">
                 {companyName}
               </span>
             )}
