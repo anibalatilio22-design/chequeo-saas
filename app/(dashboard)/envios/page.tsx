@@ -551,6 +551,13 @@ export default function EnviosPage() {
           name: `Flex/Colecta — ${pack.buyerName || pack.itemId}`,
           active: true,
           output_product_id: null,
+          // Se guardan por separado (además de ir mezclados en "name" de
+          // arriba, que no se toca para no romper nada que ya lo use) para
+          // que el buscador de Chequeo pueda encontrar el paquete por
+          // cualquiera de los datos de la columna "Identificación" del PDF.
+          pack_id: pack.packId,
+          venta: pack.venta,
+          buyer_name: pack.buyerName || null,
         } as any)
         .select()
         .single();

@@ -29,6 +29,22 @@ export default function ArmadoPage() {
   const [matchingShipments, setMatchingShipments] = useState<Shipment[]>([]);
   const [shipmentId, setShipmentId] = useState<string>("");
 
+  // Buscador manual de paquetes de Flex/Colecta — alternativa a escanear la
+  // etiqueta, para cuando el operario prefiere (o necesita) encontrar el
+  // paquete por la Identificación, el Pack ID, la Venta o el nombre del
+  // cliente en vez de leer el código de barras/QR. Se trae la lista de
+  // paquetes del envío una sola vez (son pocos, un envío completo) y se
+  // filtra en el momento a medida que se escribe.
+  type FlexPackOption = {
+    shipmentItemId: string;
+    itemId: string;
+    packId: string | null;
+    venta: string | null;
+    buyerName: string | null;
+  };
+  const [flexPackOptions, setFlexPackOptions] = useState<FlexPackOption[]>([]);
+  const [packSearchQuery, setPackSearchQuery] = useState("");
+
   // Receta en armado
   const [shipmentItemId, setShipmentItemId] = useState<string | null>(null);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -166,6 +182,55 @@ export default function ArmadoPage() {
     resetRecipeState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipmentType, shipments]);
+
+  // Traer los paquetes del envío Flex/Colecta activo, para el buscador
+  // manual (ver FlexPackOption más arriba). Solo hace falta para este tipo
+  // de envío — Full no tiene paquetes, se sigue armando solo por escaneo.
+  useEffect(() => {
+    setPackSearchQuery("");
+    if (shipmentType !== "flex" || !shipmentId) {
+      setFlexPackOptions([]);
+      return;
+    }
+    supabase
+      .from("shipment_items")
+      .select("id, label_ean, recipes(active, pack_id, venta, buyer_name)")
+      .eq("shipment_id", shipmentId)
+      .then(({ data }) => {
+        const rows = (data ?? []) as any[];
+        setFlexPackOptions(
+          rows
+            .filter((r) => r.recipes?.active)
+            .map((r) => ({
+              shipmentItemId: r.id,
+              itemId: r.label_ean,
+              packId: r.recipes?.pack_id ?? null,
+              venta: r.recipes?.venta ?? null,
+              buyerName: r.recipes?.buyer_name ?? null,
+            }))
+        );
+      });
+  }, [shipmentType, shipmentId, supabase]);
+
+  function matchesPackSearch(opt: FlexPackOption, query: string): boolean {
+    const q = query.trim().toLowerCase();
+    if (!q) return false;
+    return (
+      opt.itemId.toLowerCase().includes(q) ||
+      (opt.packId?.toLowerCase().includes(q) ?? false) ||
+      (opt.venta?.toLowerCase().includes(q) ?? false) ||
+      (opt.buyerName?.toLowerCase().includes(q) ?? false)
+    );
+  }
+
+  const packSearchResults = packSearchQuery.trim()
+    ? flexPackOptions.filter((o) => matchesPackSearch(o, packSearchQuery)).slice(0, 15)
+    : [];
+
+  function selectPackSearchResult(opt: FlexPackOption) {
+    setPackSearchQuery("");
+    handleLabelScan(opt.itemId);
+  }
 
   // Cargar operarios activos de la empresa (para el modal de confirmación)
   useEffect(() => {
@@ -562,6 +627,53 @@ export default function ArmadoPage() {
             <span className="text-xs text-neutral-400">
               (la define el administrador desde Envío)
             </span>
+          </div>
+        )}
+
+        {/* Buscador manual de paquetes — alternativa a escanear la etiqueta,
+            solo para Flex/Colecta y solo antes de empezar a armar un
+            paquete puntual (una vez adentro de uno, se sigue escaneando
+            componentes como siempre). Matchea contra la Identificación, el
+            Pack ID, la Venta o el nombre del cliente — lo que sea que el
+            operario tenga a mano en el paquete. */}
+        {shipmentType === "flex" && !shipmentItemId && (
+          <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+            <label className="text-sm text-neutral-500">
+              Buscar paquete (Identificación, Pack ID, Venta o nombre del cliente)
+            </label>
+            <input
+              value={packSearchQuery}
+              onChange={(e) => setPackSearchQuery(e.target.value)}
+              placeholder="Ej: los últimos números o el apellido del cliente"
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2"
+            />
+            {packSearchQuery.trim() && (
+              <div className="max-h-64 space-y-1 overflow-y-auto">
+                {packSearchResults.length === 0 ? (
+                  <p className="text-sm text-neutral-400">Sin coincidencias.</p>
+                ) : (
+                  packSearchResults.map((opt) => (
+                    <button
+                      key={opt.shipmentItemId}
+                      type="button"
+                      onClick={() => selectPackSearchResult(opt)}
+                      className="block w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-left text-sm hover:border-yellow-400 hover:bg-yellow-50"
+                    >
+                      <span className="font-medium text-neutral-900">
+                        {opt.buyerName || "Sin nombre"}
+                      </span>
+                      <span className="ml-2 text-xs text-neutral-500">
+                        {opt.packId
+                          ? `Pack ID: ...${opt.packId.slice(-4)}`
+                          : opt.venta
+                          ? `Venta: ...${opt.venta.slice(-4)}`
+                          : `Id: ${opt.itemId}`}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         )}
 

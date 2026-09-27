@@ -98,6 +98,13 @@ export interface Recipe {
   // Producto final que arma esta receta (lo que se vende/pide). Es lo que se
   // compara contra un pedido nuevo para saber "qué combo es este".
   output_product_id: string | null;
+  // Estos tres solo se completan en las recetas automáticas que arma el
+  // import de Flex/Colecta (una por paquete, ver FLEXPACK_LABEL_PREFIX en
+  // envios/page.tsx) — null en cualquier receta de catálogo real. Sirven
+  // para el buscador de Chequeo (por Pack ID, Venta o nombre del cliente).
+  pack_id: string | null;
+  venta: string | null;
+  buyer_name: string | null;
   created_at: string;
   updated_at: string;
 }
