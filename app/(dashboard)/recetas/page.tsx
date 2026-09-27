@@ -13,6 +13,12 @@ import type { Product, Recipe, RecipeComponent, ProductStock } from "@/types/dat
 // es el link a la publicación en Mercado Libre, para poder abrirla y
 // comparar en caso de duda.
 type ComponentDraft = {
+  // El producto que YA tiene este componente, si esta fila viene de una
+  // receta existente que se está editando. Si es null, la fila es nueva —
+  // ver createOrUpdateComponentProduct: cada componente es un producto
+  // totalmente independiente del resto del catálogo, así que una fila nueva
+  // siempre crea su propio producto, nunca busca ni reutiliza uno existente.
+  productId: string | null;
   ean: string;
   sku: string;
   name: string;
@@ -23,7 +29,16 @@ type ComponentDraft = {
 };
 
 function emptyComponentDraft(): ComponentDraft {
-  return { ean: "", sku: "", name: "", quantity: "1", imageFile: null, imageUrl: "", mlLink: "" };
+  return {
+    productId: null,
+    ean: "",
+    sku: "",
+    name: "",
+    quantity: "1",
+    imageFile: null,
+    imageUrl: "",
+    mlLink: "",
+  };
 }
 
 // Ya no hay dos listas separadas (Productos / Recetas). Todo lo que se carga
@@ -549,6 +564,87 @@ export default function RecetasPage() {
     return { product: created };
   }
 
+  // A pedido explícito: los componentes de un combo NO se relacionan entre
+  // sí ni con productos de otros combos — cada uno es un producto totalmente
+  // aparte, aunque sea "la misma pieza física" que ya usaste en otro lado
+  // (por ejemplo HB-113A en 5 combos distintos). Si hace falta la misma foto
+  // en 5 lugares, se carga 5 veces — es el precio de que nunca más un combo
+  // le pise sin querer la ficha a otro producto (que fue justo lo que pasó
+  // con COMBOINST137 y HB-113A).
+  //
+  // "productId" es el producto que YA tiene esta fila puntual (si se está
+  // editando una receta existente): en ese caso se actualiza ESE registro
+  // nada más. Si es null (fila nueva), se crea un producto nuevo siempre,
+  // sin buscar por EAN/SKU en el resto del catálogo — a diferencia de
+  // resolveOrCreateProduct (que sigue usándose solo para el SKU propio del
+  // combo, ver findComboSkuCollision más abajo).
+  async function createOrUpdateComponentProduct(
+    productId: string | null,
+    ean: string,
+    sku: string,
+    name: string,
+    extra?: { imageUrl?: string | null; mlLink?: string | null }
+  ): Promise<{ product: Product | null; error?: string }> {
+    const eanTrim = ean.trim();
+    const skuTrim = sku.trim();
+    const nameTrim = name.trim();
+
+    if (!eanTrim && !skuTrim && !nameTrim) {
+      return { product: null, error: "Completá al menos el EAN, el SKU o el nombre" };
+    }
+    if (!companyId) return { product: null, error: "No se encontró la empresa" };
+
+    if (productId) {
+      const existing = products.find((p) => p.id === productId);
+      if (existing) {
+        const patch: {
+          ean?: string | null;
+          sku?: string | null;
+          name?: string;
+          image_url?: string;
+          ml_link?: string | null;
+        } = {};
+        if (eanTrim !== (existing.ean ?? "")) patch.ean = eanTrim || null;
+        if (skuTrim !== (existing.sku ?? "")) patch.sku = skuTrim || null;
+        if (nameTrim && nameTrim !== existing.name) patch.name = nameTrim;
+        if (extra?.imageUrl && extra.imageUrl !== existing.image_url) patch.image_url = extra.imageUrl;
+        if (extra?.mlLink !== undefined && (extra.mlLink || null) !== existing.ml_link) {
+          patch.ml_link = extra.mlLink || null;
+        }
+        if (Object.keys(patch).length > 0) {
+          await (supabase.from("products") as any).update(patch).eq("id", productId);
+          Object.assign(existing, patch);
+        }
+        return { product: existing };
+      }
+    }
+
+    if (!nameTrim) {
+      return { product: null, error: "Ese EAN/SKU no está en el catálogo — completá el nombre para crearlo" };
+    }
+
+    const { data: createdRaw, error } = await supabase
+      .from("products")
+      .insert({
+        company_id: companyId,
+        ean: eanTrim || null,
+        sku: skuTrim || null,
+        name: nameTrim,
+        image_url: extra?.imageUrl || null,
+        ml_link: extra?.mlLink || null,
+      } as any)
+      .select()
+      .single();
+
+    const created = createdRaw as Product | null;
+    if (error || !created) {
+      return { product: null, error: error?.message ?? "Error al crear el producto" };
+    }
+
+    products.push(created);
+    return { product: created };
+  }
+
   // Un combo necesita SIEMPRE un SKU propio, distinto del de cualquier
   // producto ya cargado (incluidos sus propios componentes): si coincide con
   // uno que ya existe, resolveOrCreateProduct no crea un producto nuevo para
@@ -634,10 +730,13 @@ export default function RecetasPage() {
         }
         imageUrl = url;
       }
-      const { product, error: rowError } = await resolveOrCreateProduct(row.ean, row.sku, row.name, {
-        imageUrl,
-        mlLink: row.mlLink,
-      });
+      const { product, error: rowError } = await createOrUpdateComponentProduct(
+        row.productId,
+        row.ean,
+        row.sku,
+        row.name,
+        { imageUrl, mlLink: row.mlLink }
+      );
       if (!product) {
         setSaving(false);
         setCreateError(rowError ?? "No se pudo identificar un producto");
@@ -736,6 +835,7 @@ export default function RecetasPage() {
           ? comps.map((c) => {
               const comp = productById(c.product_id);
               return {
+                productId: c.product_id,
                 ean: c.product_ean ?? "",
                 sku: c.product_sku ?? "",
                 name: c.product_name ?? "",
@@ -782,10 +882,13 @@ export default function RecetasPage() {
         }
         imageUrl = url;
       }
-      const { product, error: rowError } = await resolveOrCreateProduct(row.ean, row.sku, row.name, {
-        imageUrl,
-        mlLink: row.mlLink,
-      });
+      const { product, error: rowError } = await createOrUpdateComponentProduct(
+        row.productId,
+        row.ean,
+        row.sku,
+        row.name,
+        { imageUrl, mlLink: row.mlLink }
+      );
       if (!product) {
         setSavingEdit(false);
         setEditError(rowError ?? "No se pudo identificar un producto");
