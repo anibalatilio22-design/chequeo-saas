@@ -549,7 +549,27 @@ export default function RecetasPage() {
     return { product: created };
   }
 
-  function validateDraft(draft: ItemDraft): { validRows: ComponentDraft[]; error: string | null; isCombo: boolean } {
+  // Un combo necesita SIEMPRE un SKU propio, distinto del de cualquier
+  // producto ya cargado (incluidos sus propios componentes): si coincide con
+  // uno que ya existe, resolveOrCreateProduct no crea un producto nuevo para
+  // el combo — reutiliza ESE MISMO registro, y a partir de ahí combo y
+  // producto quedan siendo la misma fila (se pisan la foto, el link, el
+  // nombre). Esto NO aplica a los componentes de un combo: ahí sí se busca
+  // y reutiliza a propósito, para poder tener el mismo producto en varios
+  // combos distintos sin duplicarlo.
+  // "excludeProductId" es el producto que YA es el combo que se está
+  // editando (si lo hay) — para no marcar como "choque" que el combo
+  // coincida con su propio registro de siempre.
+  function findComboSkuCollision(comboSku: string, excludeProductId?: string | null): Product | null {
+    const sku = comboSku.trim();
+    if (!sku) return null;
+    return products.find((p) => p.sku === sku && p.id !== excludeProductId) ?? null;
+  }
+
+  function validateDraft(
+    draft: ItemDraft,
+    excludeProductId?: string | null
+  ): { validRows: ComponentDraft[]; error: string | null; isCombo: boolean } {
     const validRows = draft.components.filter((c) => c.ean.trim() || c.sku.trim() || c.name.trim());
     if (validRows.length === 0) {
       return { validRows, error: "Agregá al menos un producto", isCombo: false };
@@ -575,6 +595,16 @@ export default function RecetasPage() {
           "Completá el SKU real del combo — es lo único que le permite al sistema reconocerlo solo cuando importás un envío Full.",
         isCombo,
       };
+    }
+    if (isCombo) {
+      const collision = findComboSkuCollision(draft.comboSku, excludeProductId);
+      if (collision) {
+        return {
+          validRows,
+          error: `Ese SKU ya es de "${collision.name}" en tu catálogo — el combo necesita un código propio, distinto del de sus componentes o de cualquier otro producto.`,
+          isCombo,
+        };
+      }
     }
     return { validRows, error: null, isCombo };
   }
@@ -729,7 +759,10 @@ export default function RecetasPage() {
     if (!editDraft || !companyId) return;
     setEditError(null);
 
-    const { validRows, error, isCombo } = validateDraft(editDraft);
+    // El propio combo que se está editando ya "es dueño" de este SKU de
+    // siempre — no es un choque, así que se excluye de la validación.
+    const currentOutputId = recipes.find((r) => r.id === recipeId)?.output_product_id ?? null;
+    const { validRows, error, isCombo } = validateDraft(editDraft, currentOutputId);
     if (error) {
       setEditError(error);
       return;
@@ -991,6 +1024,32 @@ export default function RecetasPage() {
             quantity,
             productStatus: existingComp ? "existe" : compName ? "se creará" : "error",
           });
+        });
+
+        // Mismo chequeo que en el formulario manual: un combo (más de un
+        // componente) necesita un SKU/EAN final propio, que no coincida con
+        // ninguno de sus propios componentes ni con otro producto ya
+        // cargado — si coincide, el producto final terminaría siendo la
+        // misma fila que ese producto (le pisa foto/link/nombre). No aplica
+        // si el combo YA existía de antes (ahí no es un choque, es la
+        // actualización de siempre) ni a los ítems simples (ahí SÍ es
+        // correcto que el final sea el mismo producto que su único
+        // componente).
+        groupsMap.forEach((group) => {
+          if (group.error) return;
+          if (group.components.length <= 1) return;
+          if (group.recipeStatus === "ya existe") return;
+          const ownComponentClash = group.components.find(
+            (c) =>
+              (group.outputSku && c.sku === group.outputSku) || (group.outputEan && c.ean === group.outputEan)
+          );
+          const otherProductClash = products.find(
+            (p) => (group.outputSku && p.sku === group.outputSku) || (group.outputEan && p.ean === group.outputEan)
+          );
+          const clashName = ownComponentClash?.name || otherProductClash?.name;
+          if (clashName) {
+            group.error = `El SKU/EAN final coincide con el de "${clashName}" — un combo necesita un código propio, distinto del de sus componentes o de cualquier otro producto del catálogo.`;
+          }
         });
 
         setImportGroups(Array.from(groupsMap.values()));
