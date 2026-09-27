@@ -583,6 +583,11 @@ export default function EnviosPage() {
         pack.products.map((p) => ({
           company_id: companyId,
           recipe_id: recipeData.id,
+          // product_id es lo que permite mostrar la foto/link del producto en
+          // Armado (ver productInfo ahí) — antes no se guardaba acá, así que
+          // esa parte nunca tenía nada para buscar en los paquetes de
+          // Flex/Colecta, aunque el producto ya esté emparejado (matched).
+          product_id: p.productId,
           product_ean: p.productEan!,
           product_sku: p.sku,
           product_name: p.name,

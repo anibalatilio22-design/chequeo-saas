@@ -70,6 +70,10 @@ export default function RecetasPage() {
   const [supabase] = useState(() => createClient());
   const [isAdmin, setIsAdmin] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  // Foto de producto agrandada (al hacer clic en cualquier miniatura de esta
+  // pantalla) — se muestra en un cartel encima de todo, se cierra tocando
+  // afuera.
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -1312,7 +1316,13 @@ export default function RecetasPage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 pl-1">
                     {c.imageUrl && (
-                      <img src={c.imageUrl} alt="" className="h-10 w-10 rounded border border-gray-200 object-cover" />
+                      <button type="button" onClick={() => setZoomedImage(c.imageUrl)} title="Tocá para agrandar">
+                        <img
+                          src={c.imageUrl}
+                          alt=""
+                          className="h-10 w-10 cursor-zoom-in rounded border border-gray-200 object-cover"
+                        />
+                      </button>
                     )}
                     <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600">
                       {c.imageUrl ? "Cambiar foto" : "Subir foto (opcional)"}
@@ -1363,11 +1373,17 @@ export default function RecetasPage() {
                 </div>
                 <div className="flex w-full flex-wrap items-center gap-2">
                   {newItem.comboImageUrl && (
-                    <img
-                      src={newItem.comboImageUrl}
-                      alt=""
-                      className="h-10 w-10 rounded border border-gray-200 object-cover"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setZoomedImage(newItem.comboImageUrl)}
+                      title="Tocá para agrandar"
+                    >
+                      <img
+                        src={newItem.comboImageUrl}
+                        alt=""
+                        className="h-10 w-10 cursor-zoom-in rounded border border-gray-200 object-cover"
+                      />
+                    </button>
                   )}
                   <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600">
                     {newItem.comboImageUrl ? "Cambiar foto del combo" : "Subir foto del combo (opcional)"}
@@ -1504,7 +1520,13 @@ export default function RecetasPage() {
                         </div>
                         <div className="flex flex-wrap items-center gap-2 pl-1">
                           {c.imageUrl && (
-                            <img src={c.imageUrl} alt="" className="h-10 w-10 rounded border border-gray-200 object-cover" />
+                            <button type="button" onClick={() => setZoomedImage(c.imageUrl)} title="Tocá para agrandar">
+                              <img
+                                src={c.imageUrl}
+                                alt=""
+                                className="h-10 w-10 cursor-zoom-in rounded border border-gray-200 object-cover"
+                              />
+                            </button>
                           )}
                           <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600">
                             {c.imageUrl ? "Cambiar foto" : "Subir foto (opcional)"}
@@ -1555,11 +1577,17 @@ export default function RecetasPage() {
                       </div>
                       <div className="flex w-full flex-wrap items-center gap-2">
                         {editDraft.comboImageUrl && (
-                          <img
-                            src={editDraft.comboImageUrl}
-                            alt=""
-                            className="h-10 w-10 rounded border border-gray-200 object-cover"
-                          />
+                          <button
+                            type="button"
+                            onClick={() => setZoomedImage(editDraft.comboImageUrl)}
+                            title="Tocá para agrandar"
+                          >
+                            <img
+                              src={editDraft.comboImageUrl}
+                              alt=""
+                              className="h-10 w-10 cursor-zoom-in rounded border border-gray-200 object-cover"
+                            />
+                          </button>
                         )}
                         <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-neutral-600">
                           {editDraft.comboImageUrl ? "Cambiar foto del combo" : "Subir foto del combo (opcional)"}
@@ -1622,7 +1650,11 @@ export default function RecetasPage() {
                       <img
                         src={outputProduct.image_url}
                         alt=""
-                        className="h-8 w-8 shrink-0 rounded border border-gray-200 object-cover"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setZoomedImage(outputProduct.image_url);
+                        }}
+                        className="h-8 w-8 shrink-0 cursor-zoom-in rounded border border-gray-200 object-cover"
                       />
                     )}
                     <span>
@@ -1700,7 +1732,8 @@ export default function RecetasPage() {
                               <img
                                 src={compProduct.image_url}
                                 alt=""
-                                className="h-7 w-7 shrink-0 rounded border border-gray-200 object-cover"
+                                onClick={() => setZoomedImage(compProduct.image_url)}
+                                className="h-7 w-7 shrink-0 cursor-zoom-in rounded border border-gray-200 object-cover"
                               />
                             )}
                             <span>
@@ -1738,6 +1771,21 @@ export default function RecetasPage() {
           )}
         </ul>
       </section>
+
+      {/* Foto de producto agrandada — se cierra tocando afuera o la propia
+          imagen. */}
+      {zoomedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setZoomedImage(null)}
+        >
+          <img
+            src={zoomedImage}
+            alt=""
+            className="max-h-full max-w-full cursor-zoom-out rounded-lg object-contain"
+          />
+        </div>
+      )}
     </main>
   );
 }

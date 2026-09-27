@@ -69,6 +69,9 @@ export default function ArmadoPage() {
     Record<string, { image_url: string | null; ml_link: string | null }>
   >({});
   const [expandedProductInfo, setExpandedProductInfo] = useState<string | null>(null);
+  // Foto de producto agrandada (al hacer clic en la miniatura) — se muestra
+  // en un cartel encima de todo, se cierra tocando afuera.
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   // Progreso de la receta actual (requerido / completado)
   const [required, setRequired] = useState(0);
@@ -767,11 +770,17 @@ export default function ArmadoPage() {
             {expandedProductInfo === "output" && recipe.output_product_id && (
               <div className="flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-gray-50 p-2">
                 {productInfo[recipe.output_product_id]?.image_url && (
-                  <img
-                    src={productInfo[recipe.output_product_id]!.image_url!}
-                    alt=""
-                    className="h-20 w-20 rounded border border-gray-200 object-cover"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setZoomedImage(productInfo[recipe.output_product_id]!.image_url!)}
+                    title="Tocá para agrandar"
+                  >
+                    <img
+                      src={productInfo[recipe.output_product_id]!.image_url!}
+                      alt=""
+                      className="h-20 w-20 cursor-zoom-in rounded border border-gray-200 object-cover"
+                    />
+                  </button>
                 )}
                 {productInfo[recipe.output_product_id]?.ml_link && (
                   <a
@@ -854,11 +863,20 @@ export default function ArmadoPage() {
                     {expandedProductInfo === c.id && (
                       <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-white p-2">
                         {info?.image_url && (
-                          <img
-                            src={info.image_url}
-                            alt=""
-                            className="h-16 w-16 rounded border border-gray-200 object-cover"
-                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setZoomedImage(info!.image_url!);
+                            }}
+                            title="Tocá para agrandar"
+                          >
+                            <img
+                              src={info.image_url}
+                              alt=""
+                              className="h-16 w-16 cursor-zoom-in rounded border border-gray-200 object-cover"
+                            />
+                          </button>
                         )}
                         {info?.ml_link && (
                           <a
@@ -970,6 +988,21 @@ export default function ArmadoPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Foto de producto agrandada — se cierra tocando afuera o la propia
+          imagen, para no taparle la pantalla al operario más de lo necesario. */}
+      {zoomedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setZoomedImage(null)}
+        >
+          <img
+            src={zoomedImage}
+            alt=""
+            className="max-h-full max-w-full cursor-zoom-out rounded-lg object-contain"
+          />
         </div>
       )}
     </main>
