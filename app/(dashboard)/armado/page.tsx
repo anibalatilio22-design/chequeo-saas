@@ -772,7 +772,7 @@ export default function ArmadoPage() {
                 {productInfo[recipe.output_product_id]?.image_url && (
                   <button
                     type="button"
-                    onClick={() => setZoomedImage(productInfo[recipe.output_product_id]!.image_url!)}
+                    onClick={() => setZoomedImage(productInfo[recipe.output_product_id!]!.image_url!)}
                     title="Tocá para agrandar"
                   >
                     <img
