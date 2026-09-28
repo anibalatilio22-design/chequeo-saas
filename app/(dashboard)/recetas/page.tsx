@@ -68,6 +68,9 @@ type CatalogImportComponentRow = {
   name: string;
   quantity: number;
   productStatus: "existe" | "se creará" | "error";
+  // Mensaje puntual para cuando productStatus es "error" por un motivo
+  // distinto de "falta nombre" (ver el chequeo de SKU repetido más abajo).
+  productError?: string;
 };
 
 type CatalogImportGroup = {
@@ -1155,6 +1158,26 @@ export default function RecetasPage() {
           }
         });
 
+        // A pedido explícito: a diferencia del formulario manual de Recetas
+        // (que ahora permite independencia total, repitiendo el mismo
+        // producto en varios combos), la carga masiva por Excel NO deja
+        // repetir un componente que ya está en el catálogo — evita duplicar
+        // por error al recargar un archivo. No aplica a un ítem suelto (1
+        // solo componente, igual al final): ahí "ya existe" es lo esperado
+        // (completa una ficha vieja). Cada combo se marca aparte, así uno
+        // repetido no frena la carga del resto del archivo.
+        groupsMap.forEach((group) => {
+          if (group.error) return;
+          if (group.components.length <= 1) return;
+          if (group.recipeStatus === "ya existe") return;
+          group.components.forEach((c) => {
+            if (c.productStatus === "existe") {
+              c.productStatus = "error";
+              c.productError = "Ese producto ya está en tu catálogo — no se puede repetir en una carga masiva.";
+            }
+          });
+        });
+
         setImportGroups(Array.from(groupsMap.values()));
       } catch (err: any) {
         setImportFileError("No se pudo leer el archivo: " + (err?.message ?? "error desconocido"));
@@ -1396,7 +1419,9 @@ export default function RecetasPage() {
                             x{c.quantity} ·{" "}
                             {c.productStatus === "existe" && "existente"}
                             {c.productStatus === "se creará" && "se creará"}
-                            {c.productStatus === "error" && <span className="text-red-600">falta nombre</span>}
+                            {c.productStatus === "error" && (
+                              <span className="text-red-600">{c.productError ?? "falta nombre"}</span>
+                            )}
                           </span>
                         </li>
                       ))}
