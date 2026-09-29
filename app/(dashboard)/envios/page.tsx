@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Product, Recipe, Shipment, ShipmentProgress, ShipmentType } from "@/types/database.types";
+import type { Product, Recipe, RecipeComponent, Shipment, ShipmentProgress, ShipmentType } from "@/types/database.types";
 import type { ParsedMlRow } from "@/lib/parse-ml-pdf";
 import type { ParsedFlexPack, ParsedFlexProduct } from "@/lib/parse-ml-flex-pdf";
 
@@ -203,7 +203,12 @@ export default function EnviosPage() {
     ((data ?? []) as { id: string }[]).forEach((s) => loadShipmentItems(s.id));
   }
 
-  async function loadCatalog(): Promise<{ products: Product[]; recipes: Recipe[]; allRecipes: Recipe[] }> {
+  async function loadCatalog(): Promise<{
+    products: Product[];
+    recipes: Recipe[];
+    allRecipes: Recipe[];
+    componentsByRecipe: Record<string, RecipeComponent[]>;
+  }> {
     const { data: productsData } = await supabase.from("products").select("*");
     setProducts(productsData ?? []);
     // Se excluyen las recetas automáticas de paquetes de Flex/Colecta (ver
@@ -216,12 +221,23 @@ export default function EnviosPage() {
     setAllRecipes(allRecipesData ?? []);
     const activeRecipes = ((allRecipesData ?? []) as Recipe[]).filter((r) => r.active);
     setRecipes(activeRecipes);
+
+    // Componentes de cada receta del catálogo, agrupados por receta — hace
+    // falta para el import de Flex/Colecta: cuando el SKU vendido es el de
+    // un combo, hay que "descomprimirlo" en sus productos reales (ver el
+    // comentario en handleFlexPdfFile).
+    const { data: componentsData } = await supabase.from("recipe_components").select("*");
+    const componentsByRecipe: Record<string, RecipeComponent[]> = {};
+    ((componentsData ?? []) as RecipeComponent[]).forEach((c) => {
+      (componentsByRecipe[c.recipe_id] ??= []).push(c);
+    });
+
     // Devolvemos los datos recién traídos (no solo los guardamos en el estado)
     // porque el estado de React no se actualiza al instante: si justo después
     // de llamar a esta función comparamos usando las variables de estado
     // "products"/"recipes", todavía vamos a estar mirando la versión vieja
     // que tenía la pantalla desde que se abrió, no la que acabamos de traer.
-    return { products: productsData ?? [], recipes: activeRecipes, allRecipes: allRecipesData ?? [] };
+    return { products: productsData ?? [], recipes: activeRecipes, allRecipes: allRecipesData ?? [], componentsByRecipe };
   }
 
   useEffect(() => {
@@ -452,17 +468,54 @@ export default function EnviosPage() {
       const parsedPacks: ParsedFlexPack[] = data.packs;
       setFlexPacks(
         parsedPacks.map((pack) => {
-          const products: PreviewFlexProduct[] = pack.products.map((prod) => {
+          const products: PreviewFlexProduct[] = pack.products.flatMap((prod) => {
             const product = matchProductBySku(prod.sku, freshCatalog.products);
+            if (!product) {
+              // Ni el producto está cargado — queda como estaba, sin código.
+              return [{ ...prod, productId: null, productEan: null, matched: false }];
+            }
+
+            // A pedido explícito: el SKU que vende Mercado Libre para un
+            // combo es SIEMPRE uno solo (el documento de Flex/Colecta nunca
+            // lo desglosa) — pero si ese SKU ya corresponde a un combo
+            // armado en el catálogo (una receta con más de un componente),
+            // acá lo "descomprimimos": en vez de cargar un único ítem con el
+            // código genérico del combo, se cargan los productos reales que
+            // lo componen, cada uno con su propio EAN/SKU/nombre — así
+            // Armado pide escanear cada uno por separado, con toda la info
+            // que ya tenés cargada en Recetas, en vez de un código que no
+            // dice nada. Si el SKU es de un producto suelto (no combo, o un
+            // combo con un solo componente), se importa como una sola línea,
+            // igual que antes.
+            const comboRecipe = freshCatalog.recipes.find((r) => r.output_product_id === product.id);
+            const comboComponents = comboRecipe ? freshCatalog.componentsByRecipe[comboRecipe.id] ?? [] : [];
+
+            if (comboComponents.length > 1) {
+              return comboComponents.map((c) => {
+                const compProduct = c.product_id ? freshCatalog.products.find((p) => p.id === c.product_id) : null;
+                return {
+                  name: c.product_name,
+                  sku: c.product_sku,
+                  quantity: c.quantity * prod.quantity,
+                  attributes: [],
+                  productId: c.product_id,
+                  productEan: (compProduct ? compProduct.ean || compProduct.sku : null) ?? c.product_ean ?? null,
+                  matched: !!c.product_id,
+                };
+              });
+            }
+
             // Si el producto no tiene EAN cargado, usamos su SKU como
             // código de todos modos (ver el comentario del tipo de arriba)
             // en vez de dejarlo sin código y bloquear el paquete entero.
-            return {
-              ...prod,
-              productId: product?.id ?? null,
-              productEan: product ? product.ean || product.sku || null : null,
-              matched: !!product,
-            };
+            return [
+              {
+                ...prod,
+                productId: product.id,
+                productEan: product.ean || product.sku || null,
+                matched: true,
+              },
+            ];
           });
           return {
             ...pack,
