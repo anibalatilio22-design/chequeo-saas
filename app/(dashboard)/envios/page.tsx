@@ -497,7 +497,7 @@ export default function EnviosPage() {
                   name: c.product_name,
                   sku: c.product_sku,
                   quantity: c.quantity * prod.quantity,
-                  attributes: [],
+                  attributes: [] as string[],
                   productId: c.product_id,
                   productEan: (compProduct ? compProduct.ean || compProduct.sku : null) ?? c.product_ean ?? null,
                   matched: !!c.product_id,
