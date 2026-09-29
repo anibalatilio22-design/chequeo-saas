@@ -873,6 +873,18 @@ export default function RecetasPage() {
     loadData();
   }
 
+  // A pedido explícito: "Eliminar" borra posta, sin avisos ni frenos — si el
+  // producto de este ítem sigue enganchado en otro lado (Stock, o como
+  // componente de otro combo), le saca esa relación primero y lo borra
+  // igual. Si era, además, la identidad de OTRO combo, ese combo se queda
+  // sin producto propio (hay que cargárselo de nuevo).
+  async function forceDeleteProduct(productId: string) {
+    await supabase.from("product_stock").delete().eq("product_id", productId);
+    await supabase.from("recipe_components").delete().eq("product_id", productId);
+    await (supabase.from("recipes") as any).update({ output_product_id: null }).eq("output_product_id", productId);
+    await supabase.from("products").delete().eq("id", productId);
+  }
+
   async function deleteRecipe(recipe: Recipe) {
     const confirmed = window.confirm(`¿Eliminar "${recipe.name}" del catálogo? Esta acción no se puede deshacer.`);
     if (!confirmed) return;
@@ -889,20 +901,8 @@ export default function RecetasPage() {
       return;
     }
 
-    // Además de la ficha (receta), borramos el producto final que le
-    // correspondía a ESTE ítem puntual — si no, queda "huérfano" (cargado
-    // pero sin ficha) y hay que volver a completarlo o borrarlo después. Si
-    // ese mismo producto todavía se usa en otro lado (por ejemplo, como
-    // componente de otro combo), la base de datos rechaza sola este borrado
-    // por la relación entre tablas — el producto queda intacto, no se rompe
-    // nada, pero SÍ avisamos (antes quedaba huérfano en silencio).
     if (recipe.output_product_id) {
-      const { error: productError } = await supabase.from("products").delete().eq("id", recipe.output_product_id);
-      if (productError) {
-        setDeleteError(
-          `Se eliminó "${recipe.name}" del catálogo, pero el producto sigue enganchado en otro lado y no se pudo borrar — quedó como huérfano (aviso amarillo arriba).`
-        );
-      }
+      await forceDeleteProduct(recipe.output_product_id);
     }
 
     loadData();
@@ -934,7 +934,6 @@ export default function RecetasPage() {
     setBulkResult(null);
     let ok = 0;
     const blocked: string[] = [];
-    const orphaned: string[] = [];
     const ids = Array.from(selectedIds);
 
     for (const id of ids) {
@@ -944,13 +943,10 @@ export default function RecetasPage() {
         blocked.push(r?.name ?? id);
       } else {
         ok += 1;
-        // Mismo criterio que en el borrado individual: se intenta borrar
-        // también el producto final de este ítem. Si la base lo rechaza
-        // (sigue en uso en otro combo), el producto queda intacto pero se
-        // avisa que quedó huérfano — antes quedaba en silencio.
+        // Mismo criterio que en el borrado individual: se borra posta,
+        // sacando cualquier relación que lo frenara.
         if (r?.output_product_id) {
-          const { error: productError } = await supabase.from("products").delete().eq("id", r.output_product_id);
-          if (productError) orphaned.push(r.name);
+          await forceDeleteProduct(r.output_product_id);
         }
       }
     }
@@ -959,10 +955,7 @@ export default function RecetasPage() {
     setSelectedIds(new Set());
     setBulkResult(
       `Se eliminaron ${ok} de ${ids.length}.` +
-        (blocked.length > 0 ? ` No se pudieron eliminar (están en uso en algún envío): ${blocked.join(", ")}.` : "") +
-        (orphaned.length > 0
-          ? ` Quedaron con producto huérfano (sigue enganchado en otro lado): ${orphaned.join(", ")}.`
-          : "")
+        (blocked.length > 0 ? ` No se pudieron eliminar (están en uso en algún envío): ${blocked.join(", ")}.` : "")
     );
     loadData();
   }
