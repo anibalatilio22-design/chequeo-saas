@@ -267,108 +267,11 @@ export default function RecetasPage() {
     return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
-  // Productos que quedaron cargados de cuando Productos y Recetas todavía
-  // eran dos listas separadas, y a los que nunca se les terminó de armar su
-  // ficha de catálogo (ninguna receta los tiene como producto final). No se
-  // muestran como una lista aparte — son un aviso de "esto quedó a mitad de
-  // camino", con un botón para terminarlos de cargar de una sola vez.
-  const orphanProducts = products.filter((p) => !recipes.some((r) => r.output_product_id === p.id));
-
-  // Ignorar el aviso de "productos sin ficha completa": no borra nada ni
-  // completa nada solo, únicamente lo oculta en ESTA computadora mientras el
-  // admin los va arreglando a mano (editando o moviendo cosas en el
-  // catálogo). Se guarda la lista puntual de productos que estaban en el
-  // aviso al tocar "Ignorar" — si más adelante aparece un producto orgánico
-  // NUEVO que no estaba en esa lista, el aviso vuelve a aparecer solo (no
-  // queda escondido para siempre sin que el admin se entere).
-  const ORPHAN_DISMISS_STORAGE_KEY = "chequeo_orphan_products_ignorados";
-  const [dismissedOrphanIds, setDismissedOrphanIds] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const raw = localStorage.getItem(ORPHAN_DISMISS_STORAGE_KEY);
-      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-  const visibleOrphanProducts = orphanProducts.filter((p) => !dismissedOrphanIds.has(p.id));
-
-  function dismissOrphanBanner() {
-    const ids = orphanProducts.map((p) => p.id);
-    setDismissedOrphanIds(new Set(ids));
-    try {
-      localStorage.setItem(ORPHAN_DISMISS_STORAGE_KEY, JSON.stringify(ids));
-    } catch {
-      // localStorage puede fallar (lleno, modo privado, etc.) — no es grave,
-      // el aviso simplemente no queda recordado la próxima vez.
-    }
-  }
-
-  const [migratingOrphans, setMigratingOrphans] = useState(false);
-  const [migrateOrphansResult, setMigrateOrphansResult] = useState<string | null>(null);
-
-  async function migrateOrphans() {
-    // Usa solo los VISIBLES (no los que el admin ya ignoró a propósito para
-    // arreglarlos a mano) — si querés que este botón también los toque,
-    // primero tenés que dejar de ignorarlos.
-    if (visibleOrphanProducts.length === 0 || !companyId) return;
-    const confirmed = window.confirm(
-      `¿Terminar de cargar ${visibleOrphanProducts.length} producto(s) al catálogo? Cada uno queda listo para escanear, usándose a sí mismo como único componente. Si alguno en realidad es un combo, después lo editás y le agregás los demás componentes.`
-    );
-    if (!confirmed) return;
-
-    setMigratingOrphans(true);
-    setMigrateOrphansResult(null);
-    let ok = 0;
-    const failed: string[] = [];
-
-    for (const product of visibleOrphanProducts) {
-      const { data: recipeDataRaw, error } = await supabase
-        .from("recipes")
-        .insert({
-          company_id: companyId,
-          output_product_id: product.id,
-          name: product.name,
-          label_ean: null,
-        } as any)
-        .select()
-        .single();
-
-      // El cliente tipado no siempre resuelve bien el tipo de este resultado
-      // (mismo motivo de fondo que otros casteos de la app), así que lo
-      // casteamos a mano para poder acceder a sus propiedades sin error.
-      const recipeData = recipeDataRaw as { id: string } | null;
-
-      if (error || !recipeData) {
-        failed.push(`${product.name} (${error?.message ?? "error"})`);
-        continue;
-      }
-
-      const { error: compError } = await supabase.from("recipe_components").insert({
-        company_id: companyId,
-        recipe_id: recipeData.id,
-        product_id: product.id,
-        product_ean: product.ean || product.sku || "",
-        product_sku: product.sku,
-        product_name: product.name,
-        quantity: 1,
-      } as any);
-
-      if (compError) {
-        failed.push(`${product.name} (creado, pero sin componente: ${compError.message})`);
-        continue;
-      }
-
-      ok += 1;
-    }
-
-    setMigratingOrphans(false);
-    setMigrateOrphansResult(
-      `Se terminaron de cargar ${ok} de ${visibleOrphanProducts.length}.` +
-        (failed.length > 0 ? ` No se pudieron: ${failed.join(", ")}.` : "")
-    );
-    await loadData();
-  }
+  // A pedido explícito: el aviso de "productos sin ficha completa" (con su
+  // botón de "Terminar de cargar") se sacó del todo — era para el cruce
+  // Catálogo/Stock de cuando Productos y Recetas se manejaban por separado,
+  // y por ahora no se está usando Stock. Si más adelante hace falta de
+  // nuevo, está en el historial de versiones.
 
   // ---------------------------------------------------------------------
   // CATÁLOGO — una sola lista (antes "Recetas" y "Productos" por separado)
@@ -1330,35 +1233,6 @@ export default function RecetasPage() {
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
       <h1 className="text-xl font-semibold">Catálogo</h1>
-
-      {isAdmin && visibleOrphanProducts.length > 0 && (
-        <section className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-sm text-amber-800">
-              Tenés {visibleOrphanProducts.length} producto(s) cargado(s) que todavía no tienen su ficha completa en
-              el catálogo (quedaron de antes de unificar las listas). Tocá para terminar de cargarlos — cada uno
-              queda listo para escanear usándose a sí mismo como único componente; si alguno en realidad es un
-              combo, después lo editás y le agregás los demás componentes.
-            </p>
-            <button
-              type="button"
-              onClick={dismissOrphanBanner}
-              title="Ignorar este aviso mientras lo arreglo a mano — vuelve a aparecer solo si hay productos nuevos sin ficha"
-              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100"
-            >
-              Ignorar
-            </button>
-          </div>
-          <button
-            onClick={migrateOrphans}
-            disabled={migratingOrphans}
-            className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {migratingOrphans ? "Cargando..." : `Terminar de cargar (${visibleOrphanProducts.length})`}
-          </button>
-          {migrateOrphansResult && <p className="text-sm text-neutral-700">{migrateOrphansResult}</p>}
-        </section>
-      )}
 
       {isAdmin && (
         <section className="space-y-3 rounded-lg border border-gray-200 p-4">
