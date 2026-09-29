@@ -988,14 +988,18 @@ export default function RecetasPage() {
 
     // Además de la ficha (receta), borramos el producto final que le
     // correspondía a ESTE ítem puntual — si no, queda "huérfano" (cargado
-    // pero sin ficha) y hay que volver a completarlo después. Si ese mismo
-    // producto todavía se usa en otro lado (por ejemplo, como componente de
-    // otro combo), la base de datos rechaza sola este borrado por la
-    // relación entre tablas — el producto queda intacto y no se rompe nada.
-    // Por eso el resultado de este borrado no se chequea: si falla, es
-    // justamente porque hace falta en otro lado, y está bien que quede.
+    // pero sin ficha) y hay que volver a completarlo o borrarlo después. Si
+    // ese mismo producto todavía se usa en otro lado (por ejemplo, como
+    // componente de otro combo), la base de datos rechaza sola este borrado
+    // por la relación entre tablas — el producto queda intacto, no se rompe
+    // nada, pero SÍ avisamos (antes quedaba huérfano en silencio).
     if (recipe.output_product_id) {
-      await supabase.from("products").delete().eq("id", recipe.output_product_id);
+      const { error: productError } = await supabase.from("products").delete().eq("id", recipe.output_product_id);
+      if (productError) {
+        setDeleteError(
+          `Se eliminó "${recipe.name}" del catálogo, pero el producto sigue enganchado en otro lado y no se pudo borrar — quedó como huérfano (aviso amarillo arriba).`
+        );
+      }
     }
 
     loadData();
@@ -1027,6 +1031,7 @@ export default function RecetasPage() {
     setBulkResult(null);
     let ok = 0;
     const blocked: string[] = [];
+    const orphaned: string[] = [];
     const ids = Array.from(selectedIds);
 
     for (const id of ids) {
@@ -1037,10 +1042,12 @@ export default function RecetasPage() {
       } else {
         ok += 1;
         // Mismo criterio que en el borrado individual: se intenta borrar
-        // también el producto final de este ítem, y si falla (porque se usa
-        // en otro combo) se deja como está, sin avisar — no es un error.
+        // también el producto final de este ítem. Si la base lo rechaza
+        // (sigue en uso en otro combo), el producto queda intacto pero se
+        // avisa que quedó huérfano — antes quedaba en silencio.
         if (r?.output_product_id) {
-          await supabase.from("products").delete().eq("id", r.output_product_id);
+          const { error: productError } = await supabase.from("products").delete().eq("id", r.output_product_id);
+          if (productError) orphaned.push(r.name);
         }
       }
     }
@@ -1049,7 +1056,10 @@ export default function RecetasPage() {
     setSelectedIds(new Set());
     setBulkResult(
       `Se eliminaron ${ok} de ${ids.length}.` +
-        (blocked.length > 0 ? ` No se pudieron eliminar (están en uso en algún envío): ${blocked.join(", ")}.` : "")
+        (blocked.length > 0 ? ` No se pudieron eliminar (están en uso en algún envío): ${blocked.join(", ")}.` : "") +
+        (orphaned.length > 0
+          ? ` Quedaron con producto huérfano (sigue enganchado en otro lado): ${orphaned.join(", ")}.`
+          : "")
     );
     loadData();
   }
