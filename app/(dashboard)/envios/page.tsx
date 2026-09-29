@@ -499,7 +499,7 @@ export default function EnviosPage() {
                   quantity: c.quantity * prod.quantity,
                   attributes: [] as string[],
                   productId: c.product_id,
-                  productEan: (compProduct ? compProduct.ean || compProduct.sku : null) ?? c.product_ean ?? null,
+                  productEan: (compProduct?.ean || compProduct?.sku || c.product_ean || null) as string | null,
                   matched: !!c.product_id,
                 };
               });
