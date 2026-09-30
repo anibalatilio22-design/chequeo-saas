@@ -143,6 +143,9 @@ export interface ShipmentItem {
   // Código ML de la etiqueta para ESTE envío puntual (cambia de envío en
   // envío, por eso vive acá y no en la receta).
   label_ean: string | null;
+  // Cantidad de bultos en la que se despacha este paquete (solo Flex/
+  // Colecta) — se carga al confirmar el armado, de cara al remito.
+  bultos: number | null;
   created_at: string;
 }
 

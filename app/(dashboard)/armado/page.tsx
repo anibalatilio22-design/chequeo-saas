@@ -148,6 +148,11 @@ export default function ArmadoPage() {
   const [operatorId, setOperatorId] = useState("");
   const [pin, setPin] = useState("");
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  // Cantidad de bultos en la que se despacha este paquete — solo aplica a
+  // Flex/Colecta (un pedido de un cliente que puede ir en más de una caja),
+  // no a Full (que no se arma "por paquete"). Se pide acá, al terminar de
+  // armar el paquete, para tenerlo guardado de cara al remito de despacho.
+  const [bultos, setBultos] = useState("1");
 
   // Copiar EAN/SKU de un componente con un toque, para cuando el lector no
   // lo lee y hay que validarlo escribiéndolo/pegándolo a mano.
@@ -498,6 +503,13 @@ export default function ArmadoPage() {
       return;
     }
 
+    const isFlexOrColecta = shipmentType === "flex" || shipmentType === "colecta";
+    const bultosNumber = parseInt(bultos, 10);
+    if (isFlexOrColecta && (!bultos.trim() || !Number.isInteger(bultosNumber) || bultosNumber < 1)) {
+      setConfirmError("Ingresá la cantidad de bultos (un número entero de 1 o más)");
+      return;
+    }
+
     setLoading(true);
 
     const verifyRes = await fetch("/api/operators/verify", {
@@ -549,10 +561,17 @@ export default function ArmadoPage() {
       return;
     }
 
+    // Guardamos la cantidad de bultos en el propio ítem del envío (una vez
+    // por paquete, no por unidad) — de cara al remito de despacho.
+    if (isFlexOrColecta && shipmentItemId) {
+      await supabase.from("shipment_items").update({ bultos: bultosNumber } as any).eq("id", shipmentItemId);
+    }
+
     // Éxito: cerrar modal, resetear para la próxima unidad
     setShowConfirm(false);
     setPin("");
     setOperatorId("");
+    setBultos("1");
     resetRecipeState();
     focusScanInput();
   }
@@ -560,6 +579,7 @@ export default function ArmadoPage() {
   function handleCancelConfirm() {
     setShowConfirm(false);
     setPin("");
+    setBultos("1");
     setConfirmError(null);
     // No se resetea la receta: el operario puede haber tocado mal el botón,
     // los productos ya escaneados siguen contando.
@@ -969,6 +989,21 @@ export default function ArmadoPage() {
                 autoFocus
               />
             </div>
+
+            {(shipmentType === "flex" || shipmentType === "colecta") && (
+              <div className="space-y-1">
+                <label className="text-sm text-neutral-500">Cantidad de bultos</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  value={bultos}
+                  onChange={(e) => setBultos(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2"
+                />
+              </div>
+            )}
 
             {confirmError && <p className="text-sm text-red-600">{confirmError}</p>}
 
