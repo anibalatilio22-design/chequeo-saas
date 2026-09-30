@@ -564,7 +564,7 @@ export default function ArmadoPage() {
     // Guardamos la cantidad de bultos en el propio ítem del envío (una vez
     // por paquete, no por unidad) — de cara al remito de despacho.
     if (isFlexOrColecta && shipmentItemId) {
-      await supabase.from("shipment_items").update({ bultos: bultosNumber } as any).eq("id", shipmentItemId);
+      await (supabase.from("shipment_items") as any).update({ bultos: bultosNumber }).eq("id", shipmentItemId);
     }
 
     // Éxito: cerrar modal, resetear para la próxima unidad
