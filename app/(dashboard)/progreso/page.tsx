@@ -313,6 +313,32 @@ export default function ProgresoPage() {
         completionsByItemId.set(c.shipment_item_id, list);
       });
 
+      // A pedido explícito: el remito de Full lista qué se armó y quién lo
+      // armó, pero el de Flex/Colecta es para el transportista, así que en
+      // vez de eso necesita Pack ID completo + nombre del cliente (guardados
+      // en "recipes", una por paquete) + cantidad de bultos (guardada en
+      // "shipment_items" al confirmar el armado).
+      const recipeInfoById = new Map<string, { pack_id: string | null; buyer_name: string | null }>();
+      const bultosByItemId = new Map<string, number | null>();
+      if (!isFullType) {
+        const recipeIds = Array.from(new Set(rowsToInclude.map((p) => p.recipe_id)));
+        const { data: recipesData } = await supabase
+          .from("recipes")
+          .select("id, pack_id, buyer_name")
+          .in("id", recipeIds);
+        (recipesData ?? []).forEach((r: any) => {
+          recipeInfoById.set(r.id, { pack_id: r.pack_id ?? null, buyer_name: r.buyer_name ?? null });
+        });
+
+        const { data: itemsData } = await supabase
+          .from("shipment_items")
+          .select("id, bultos")
+          .in("id", itemIds);
+        (itemsData ?? []).forEach((it: any) => {
+          bultosByItemId.set(it.id, it.bultos ?? null);
+        });
+      }
+
       // El logo es opcional: si no se puede traer o convertir por cualquier
       // motivo (por ejemplo, restricciones del servidor donde está
       // guardado), el remito se arma igual, solo que con el nombre de la
@@ -444,9 +470,9 @@ export default function ProgresoPage() {
       // línea por cada unidad), para que un combo de 10/20/40 unidades no
       // haga el remito interminable, tal como en el remito de Mercado Libre.
       const col1X = marginX;
-      const col1W = 70;
+      const col1W = isFullType ? 70 : 55;
       const col2X = col1X + col1W;
-      const col2W = 20;
+      const col2W = isFullType ? 20 : pageWidth - marginX * 2 - col1W - 25;
       const col3X = col2X + col2W;
       const col3W = pageWidth - marginX - col3X;
       const lineH = 4.5;
@@ -455,9 +481,15 @@ export default function ProgresoPage() {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
         doc.setTextColor(0);
-        doc.text("Producto", col1X + 1, y);
-        doc.text("Cant.", col2X + 1, y);
-        doc.text("Armado por", col3X + 1, y);
+        if (isFullType) {
+          doc.text("Producto", col1X + 1, y);
+          doc.text("Cant.", col2X + 1, y);
+          doc.text("Armado por", col3X + 1, y);
+        } else {
+          doc.text("Pack ID", col1X + 1, y);
+          doc.text("Cliente", col2X + 1, y);
+          doc.text("Bultos", col3X + 1, y);
+        }
         y += 2;
         doc.setDrawColor(120);
         doc.line(marginX, y, pageWidth - marginX, y);
@@ -477,36 +509,76 @@ export default function ProgresoPage() {
 
       drawTableHeader();
 
+      let totalBultos = 0;
+
       for (const p of rowsToInclude) {
-        const productLines = doc.splitTextToSize(p.recipe_name, col1W - 2);
-        const detail = completionsByItemId.get(p.shipment_item_id) ?? [];
-        const groups = groupCompletionsByOperario(detail);
-        const armadoLines: string[] =
-          groups.length > 0
-            ? groups.flatMap((g) => doc.splitTextToSize(formatOperarioGroupLine(g), col3W - 2))
-            : ["Todavía no se registró ningún armado."];
+        if (isFullType) {
+          const productLines = doc.splitTextToSize(p.recipe_name, col1W - 2);
+          const detail = completionsByItemId.get(p.shipment_item_id) ?? [];
+          const groups = groupCompletionsByOperario(detail);
+          const armadoLines: string[] =
+            groups.length > 0
+              ? groups.flatMap((g) => doc.splitTextToSize(formatOperarioGroupLine(g), col3W - 2))
+              : ["Todavía no se registró ningún armado."];
 
-        const rowLines = Math.max(productLines.length, armadoLines.length, 1);
-        const rowHeight = rowLines * lineH + 3;
+          const rowLines = Math.max(productLines.length, armadoLines.length, 1);
+          const rowHeight = rowLines * lineH + 3;
 
-        if (ensureSpace(rowHeight)) drawTableHeader();
-        const rowTop = y;
+          if (ensureSpace(rowHeight)) drawTableHeader();
+          const rowTop = y;
 
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(0);
-        doc.text(productLines, col1X + 1, y + lineH - 1);
-        doc.text(`${p.quantity_completed}/${p.quantity_required}`, col2X + 1, y + lineH - 1);
-        doc.setTextColor(90);
-        doc.text(armadoLines, col3X + 1, y + lineH - 1);
-        doc.setTextColor(0);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9);
+          doc.setTextColor(0);
+          doc.text(productLines, col1X + 1, y + lineH - 1);
+          doc.text(`${p.quantity_completed}/${p.quantity_required}`, col2X + 1, y + lineH - 1);
+          doc.setTextColor(90);
+          doc.text(armadoLines, col3X + 1, y + lineH - 1);
+          doc.setTextColor(0);
 
-        y = rowTop + rowHeight;
-        doc.setDrawColor(225);
-        doc.line(col2X, rowTop, col2X, y);
-        doc.line(col3X, rowTop, col3X, y);
-        doc.line(marginX, y, pageWidth - marginX, y);
-        y += 1;
+          y = rowTop + rowHeight;
+          doc.setDrawColor(225);
+          doc.line(col2X, rowTop, col2X, y);
+          doc.line(col3X, rowTop, col3X, y);
+          doc.line(marginX, y, pageWidth - marginX, y);
+          y += 1;
+        } else {
+          const info = recipeInfoById.get(p.recipe_id);
+          const packId = info?.pack_id || "—";
+          const buyerName = info?.buyer_name || "(sin nombre)";
+          const bultosValue = bultosByItemId.get(p.shipment_item_id) ?? null;
+          totalBultos += bultosValue ?? 0;
+
+          const packIdLines = doc.splitTextToSize(packId, col1W - 2);
+          const buyerLines = doc.splitTextToSize(buyerName, col2W - 2);
+          const rowLines = Math.max(packIdLines.length, buyerLines.length, 1);
+          const rowHeight = rowLines * lineH + 3;
+
+          if (ensureSpace(rowHeight)) drawTableHeader();
+          const rowTop = y;
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9);
+          doc.setTextColor(0);
+          doc.text(packIdLines, col1X + 1, y + lineH - 1);
+          doc.text(buyerLines, col2X + 1, y + lineH - 1);
+          doc.text(bultosValue != null ? String(bultosValue) : "—", col3X + 1, y + lineH - 1);
+
+          y = rowTop + rowHeight;
+          doc.setDrawColor(225);
+          doc.line(col2X, rowTop, col2X, y);
+          doc.line(col3X, rowTop, col3X, y);
+          doc.line(marginX, y, pageWidth - marginX, y);
+          y += 1;
+        }
+      }
+
+      if (!isFullType) {
+        ensureSpace(8);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text(`Total de bultos: ${totalBultos}`, marginX, y);
+        y += 8;
       }
 
       ensureSpace(30);
