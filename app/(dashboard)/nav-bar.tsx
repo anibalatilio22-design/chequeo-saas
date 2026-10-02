@@ -145,7 +145,7 @@ export default function NavBar({
               iconSize={42}
               wordmarkSize="text-xl"
               wordmarkStyle="brand"
-              withSubtitle
+              withSubtitle={false}
               variant="dark"
             />
           </Link>
