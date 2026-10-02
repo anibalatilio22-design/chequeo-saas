@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { PasswordInput } from "@/components/password-input";
 
 // Alta de una empresa nueva, sin intervención manual de nadie: cualquiera
 // que entre acá crea su propio depósito, separado del de las demás
@@ -106,8 +107,7 @@ export default function SignupPage() {
 
         <div className="space-y-1">
           <label className="text-sm text-neutral-500">Contraseña</label>
-          <input
-            type="password"
+          <PasswordInput
             required
             minLength={6}
             value={password}

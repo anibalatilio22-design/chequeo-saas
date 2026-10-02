@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Company, Operator } from "@/types/database.types";
+import { PasswordInput } from "@/components/password-input";
 
 // El "puesto de trabajo" es solo una etiqueta local de esta computadora
 // (no se guarda en la base de datos) — sirve para identificar rápido en
@@ -461,8 +462,7 @@ export default function ConfigPage() {
 
         <form onSubmit={handleChangePassword} className="flex flex-wrap items-end gap-3">
           <div className="flex-1 space-y-1">
-            <input
-              type="password"
+            <PasswordInput
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Nueva contraseña"

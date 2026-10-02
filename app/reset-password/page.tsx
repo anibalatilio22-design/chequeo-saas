@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { PasswordInput } from "@/components/password-input";
 
 // Página a la que te lleva el link del mail de "recuperar contraseña" (tanto
 // el que manda Supabase Studio a mano como el que en el futuro mande el link
@@ -150,8 +151,7 @@ export default function ResetPasswordPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
               <label className="text-sm text-neutral-500">Contraseña nueva</label>
-              <input
-                type="password"
+              <PasswordInput
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -160,8 +160,7 @@ export default function ResetPasswordPage() {
             </div>
             <div className="space-y-1">
               <label className="text-sm text-neutral-500">Repetí la contraseña</label>
-              <input
-                type="password"
+              <PasswordInput
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}

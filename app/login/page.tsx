@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CheckFlashLogo } from "@/components/checkflash-logo";
+import { PasswordInput } from "@/components/password-input";
 
 // Reemplaza a la "contraseña general de la app" del prototipo.
 // Cada persona de cada empresa entra con su propio email + contraseña
@@ -122,8 +123,7 @@ export default function LoginPage() {
 
         <div className="space-y-1">
           <label className="text-sm text-neutral-500">Contraseña</label>
-          <input
-            type="password"
+          <PasswordInput
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
