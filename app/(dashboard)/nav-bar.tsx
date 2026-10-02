@@ -144,8 +144,8 @@ export default function NavBar({
             <CheckFlashLogo
               iconSize={42}
               wordmarkSize="text-xl"
-              wordmarkStyle="plain"
-              withSubtitle={false}
+              wordmarkStyle="brand"
+              withSubtitle
               variant="dark"
             />
           </Link>
