@@ -19,13 +19,17 @@ export function PasswordInput({
 
   return (
     <div className="relative">
-      <input {...props} type={visible ? "text" : "password"} className={`${className} pr-10`} />
+      <input
+        {...props}
+        type={visible ? "text" : "password"}
+        className={`block ${className} pr-10`}
+      />
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
         tabIndex={-1}
         title={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
-        className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-400 hover:text-neutral-600"
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
       >
         {visible ? (
           <svg
