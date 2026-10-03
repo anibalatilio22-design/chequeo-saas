@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import NavBar from "./nav-bar";
-import type { UserRole } from "@/types/database.types";
+import type { SubscriptionStatus, UserRole } from "@/types/database.types";
+import { isOwnerEmail } from "@/lib/owner";
 
 // Layout compartido por todas las pestañas internas (Armado, Recetas,
 // Envío, Progreso, Configuración) — igual estructura que el prototipo.
@@ -37,15 +38,29 @@ export default async function DashboardLayout({
   if (profile?.company_id) {
     const { data: companyDataRaw } = await supabase
       .from("companies")
-      .select("name, logo_url")
+      .select("name, logo_url, subscription_status")
       .eq("id", profile.company_id)
       .single();
     // Mismo motivo de fondo que el casteo de "profile" de arriba — pasa
     // incluso usando "?.", así que lo casteamos a mano.
-    const companyData = companyDataRaw as { name: string | null; logo_url: string | null } | null;
+    const companyData = companyDataRaw as {
+      name: string | null;
+      logo_url: string | null;
+      subscription_status: SubscriptionStatus | null;
+    } | null;
     companyName = companyData?.name ?? null;
     logoUrl = companyData?.logo_url ?? null;
+
+    // Bloqueo manual de pago (ver /dueno): si el dueño del sistema marcó
+    // esta empresa como suspendida, no entra a ninguna pantalla del
+    // dashboard. El dueño mismo (vos) nunca queda afuera por esto, aunque
+    // tu propia empresa quedara mal marcada por error.
+    if (companyData?.subscription_status === "suspended" && !isOwnerEmail(user.email)) {
+      redirect("/suscripcion-vencida");
+    }
   }
+
+  const isOwner = isOwnerEmail(user.email);
 
   return (
     <div className="min-h-screen bg-white text-neutral-900">
@@ -54,6 +69,7 @@ export default async function DashboardLayout({
         role={profile?.role ?? "operario"}
         companyName={companyName}
         logoUrl={logoUrl}
+        isOwner={isOwner}
       />
       {children}
     </div>

@@ -19,11 +19,15 @@ export default function NavBar({
   role,
   companyName,
   logoUrl,
+  isOwner,
 }: {
   userName: string | null;
   role: "admin" | "operario";
   companyName?: string | null;
   logoUrl?: string | null;
+  // Solo vos (el dueño del sistema, ver lib/owner.ts) ves el link a
+  // /dueno — ni siquiera el admin de otra empresa sabe que existe.
+  isOwner?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -125,6 +129,14 @@ export default function NavBar({
 
             {userMenuOpen && (
               <div className="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                {isOwner && (
+                  <Link
+                    href="/dueno"
+                    className="block w-full px-4 py-2 text-left text-sm font-medium text-neutral-700 hover:bg-gray-50"
+                  >
+                    Panel general
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={handleLogout}

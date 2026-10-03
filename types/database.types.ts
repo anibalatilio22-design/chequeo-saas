@@ -6,6 +6,8 @@ export type UserRole = "admin" | "operario";
 export type ShipmentType = "full" | "flex" | "colecta";
 export type ShipmentStatus = "open" | "closed" | "archived";
 
+export type SubscriptionStatus = "trial" | "active" | "suspended";
+
 export interface Company {
   id: string;
   name: string;
@@ -14,6 +16,13 @@ export interface Company {
   address: string | null;
   phone: string | null;
   logo_url: string | null;
+  // Estado de pago de esta empresa, a cargo del dueño del sistema desde
+  // /dueno (no hay cobro automático todavía): "trial" recién creada,
+  // "active" al día, "suspended" le bloquea la entrada a esa empresa sola.
+  subscription_status: SubscriptionStatus;
+  // Fecha hasta la que está cubierta (opcional, solo para que el dueño
+  // sepa cuándo volver a cobrarle) — no bloquea nada por sí sola.
+  paid_until: string | null;
   created_at: string;
 }
 
