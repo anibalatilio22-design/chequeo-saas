@@ -35,9 +35,8 @@ export async function PATCH(req: Request) {
   }
 
   const admin = createAdminClient();
-  const { error } = await admin
-    .from("companies")
-    .update({ subscription_status, paid_until: paid_until || null } as any)
+  const { error } = await (admin.from("companies") as any)
+    .update({ subscription_status, paid_until: paid_until || null })
     .eq("id", id);
 
   if (error) {
