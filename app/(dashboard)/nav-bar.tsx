@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { CheckFlashLogo } from "@/components/checkflash-logo";
 
 const TABS = [
-  { href: "/armado", label: "Chequeo", adminOnly: false },
+  { href: "/armado", label: "Packing", adminOnly: false },
   { href: "/recetas", label: "Catálogo", adminOnly: false },
   { href: "/envios", label: "Envío", adminOnly: false },
   { href: "/progreso", label: "Progreso", adminOnly: false },
