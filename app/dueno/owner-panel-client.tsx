@@ -17,12 +17,34 @@ const STATUS_COLOR: Record<SubscriptionStatus, string> = {
 
 // Fila por empresa, con su propio estado "en vuelo" (guardando / error) para
 // no tener que recargar toda la lista por cada cambio.
-function CompanyRow({ company }: { company: Company }) {
+function CompanyRow({ company, onDeleted }: { company: Company; onDeleted: (id: string) => void }) {
   const [status, setStatus] = useState<SubscriptionStatus>(company.subscription_status);
   const [paidUntil, setPaidUntil] = useState(company.paid_until ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    const confirmed = window.confirm(
+      `¿Eliminar "${company.name}" para siempre? Esto borra TODO lo suyo — productos, recetas, envíos, armados y los usuarios de esa empresa. No se puede deshacer.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+
+    const res = await fetch(`/api/dueno/companies?id=${company.id}`, { method: "DELETE" });
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      setDeleting(false);
+      setError(data.error ?? "No se pudo eliminar.");
+      return;
+    }
+
+    onDeleted(company.id);
+  }
 
   async function save(nextStatus: SubscriptionStatus) {
     setSaving(true);
@@ -100,6 +122,14 @@ function CompanyRow({ company }: { company: Company }) {
           >
             En prueba
           </button>
+          <button
+            type="button"
+            disabled={saving || deleting}
+            onClick={handleDelete}
+            className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            {deleting ? "Eliminando..." : "Eliminar"}
+          </button>
           {saved && <span className="text-xs font-medium text-green-600">Guardado</span>}
           {error && <span className="text-xs text-red-600">{error}</span>}
         </div>
@@ -108,7 +138,13 @@ function CompanyRow({ company }: { company: Company }) {
   );
 }
 
-export default function OwnerPanelClient({ companies }: { companies: Company[] }) {
+export default function OwnerPanelClient({ companies: initialCompanies }: { companies: Company[] }) {
+  const [companies, setCompanies] = useState(initialCompanies);
+
+  function handleDeleted(id: string) {
+    setCompanies((prev) => prev.filter((c) => c.id !== id));
+  }
+
   if (companies.length === 0) {
     return <p className="text-sm text-neutral-500">Todavía no hay ninguna empresa registrada.</p>;
   }
@@ -126,7 +162,7 @@ export default function OwnerPanelClient({ companies }: { companies: Company[] }
         </thead>
         <tbody className="px-3">
           {companies.map((c) => (
-            <CompanyRow key={c.id} company={c} />
+            <CompanyRow key={c.id} company={c} onDeleted={handleDeleted} />
           ))}
         </tbody>
       </table>
