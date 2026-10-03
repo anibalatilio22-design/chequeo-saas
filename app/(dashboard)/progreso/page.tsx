@@ -153,7 +153,41 @@ export default function ProgresoPage() {
       .select("*")
       .eq("shipment_id", id)
       .order("recipe_name", { ascending: true });
-    setProgress(data ?? []);
+    const rows = (data ?? []) as ShipmentProgress[];
+    setProgress(rows);
+    // En Flex/Colecta el operario, la fecha y la hora van siempre a la vista
+    // al lado de cada pedido (no hace falta desplegarlo como en Full), así
+    // que acá mismo se traen de una sola vez los armados de TODOS los
+    // pedidos del envío.
+    if (shipmentType !== "full") {
+      loadCompletionsForItems(rows.map((r) => r.shipment_item_id));
+    }
+  }
+
+  // Trae los armados de VARIOS ítems de una sola consulta (en vez de uno por
+  // uno como loadCompletionsForItem) — se usa para Flex/Colecta, donde esta
+  // info se muestra siempre, sin esperar a que se despliegue cada pedido.
+  async function loadCompletionsForItems(itemIds: string[]) {
+    if (itemIds.length === 0) return;
+    const { data } = await supabase
+      .from("completions")
+      .select("id, shipment_item_id, completed_at, operators(full_name), workstations(name)")
+      .in("shipment_item_id", itemIds)
+      .order("completed_at", { ascending: true });
+
+    const grouped: Record<string, CompletionRow[]> = {};
+    (data ?? []).forEach((c: any) => {
+      const row: CompletionRow = {
+        id: c.id,
+        completed_at: c.completed_at,
+        operator_name: c.operators?.full_name ?? "Desconocido",
+        workstation_name: c.workstations?.name ?? "Sin puesto asignado",
+      };
+      const list = grouped[c.shipment_item_id] ?? [];
+      list.push(row);
+      grouped[c.shipment_item_id] = list;
+    });
+    setCompletionsByItem((prev) => ({ ...prev, ...grouped }));
   }
 
   // Trae los armados (completions) de UN ítem, con quién lo armó y en qué
@@ -746,7 +780,23 @@ export default function ProgresoPage() {
                   </div>
                 </button>
 
-                {isExpanded && (
+                {/* Flex/Colecta: quién lo chequeó, fecha y hora, siempre a la
+                    vista al lado del pedido — sin tener que desplegarlo. */}
+                {!isFullType && (
+                  <div className="mt-1.5 space-y-0.5 text-xs text-neutral-500">
+                    {detail.length > 0 ? (
+                      detail.map((c) => (
+                        <div key={c.id}>
+                          {c.operator_name} — {formatShortDateTime(c.completed_at)}
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-neutral-400">Todavía no se chequeó.</span>
+                    )}
+                  </div>
+                )}
+
+                {isFullType && isExpanded && (
                   <ul className="mt-3 space-y-1 border-t border-gray-100 pt-2 text-sm text-neutral-600">
                     {detail.map((c) => (
                       <li key={c.id} className="flex flex-wrap items-center justify-between gap-x-3">
