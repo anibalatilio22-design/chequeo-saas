@@ -62,17 +62,17 @@ export default function NavBar({
             que no quede flotando directo sobre el amarillo), pegado al borde
             y ocupando el alto de la barra. */}
         {(logoUrl || companyName) && (
-          <div className="my-1 flex shrink-0 items-center gap-2 rounded-xl bg-white px-3 py-0.5 shadow-sm">
+          <div className="my-auto flex h-16 shrink-0 items-center gap-2.5 self-center rounded-xl bg-white px-3.5 shadow-sm">
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={logoUrl}
                 alt={companyName ? `Logo de ${companyName}` : "Logo de la empresa"}
-                className="h-full w-auto max-w-[220px] object-contain"
+                className="h-full max-w-[170px] object-contain"
               />
             )}
             {companyName && (
-              <span className="max-w-[160px] truncate text-sm font-semibold text-neutral-900">
+              <span className="max-w-[160px] truncate text-base font-bold leading-tight text-neutral-900">
                 {companyName}
               </span>
             )}
